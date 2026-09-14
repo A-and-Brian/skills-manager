@@ -49,9 +49,13 @@ export function ConfirmDialog({
   };
 
   return (
+    // The panel is capped so the footer buttons stay reachable (#430). The cap
+    // divides by --app-scale because the text-size setting applies `zoom` to
+    // <html> and zoom does not scale vh: a bare 85vh renders at 102% of the
+    // viewport on the largest size. Same compensation as html/body in index.css.
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-surface border border-border rounded-xl w-full max-w-sm p-5 shadow-2xl flex flex-col max-h-[85vh]">
+      <div className="relative bg-surface border border-border rounded-xl w-full max-w-sm p-5 shadow-2xl flex flex-col max-h-[calc(85vh/var(--app-scale))]">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[13px] font-semibold text-primary flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-400" />
