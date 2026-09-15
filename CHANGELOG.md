@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.0] - 2026-09-15
+
+### Release Overview
+- Preset chips wrap instead of being cut off, and line endings alone no longer make a skill look out of date. Also adds GitLab Duo as a built-in agent, and fixes two bugs that could leave you stuck: a confirmation dialog whose buttons scrolled off screen, and imported skills that permanently reported a missing source.
+
+### User-facing
+- **Preset chips now wrap instead of being cut off** — With more than about nine presets the row overflowed the window and the ones past the edge could not be reached with a mouse at all. They now wrap onto as many lines as they need, so every preset stays visible and clickable. Thanks to @ZhuYichuan (#447, #341).
+- **Skills no longer sit at "update available" forever on a Windows + macOS pair** — A skill imported from a local folder is compared against that folder byte for byte, and Git for Windows converts line endings on checkout by default. The same skill is therefore CRLF on one machine and LF on the other, the comparison never matched, and re-importing only rewrote the library in the local encoding — so the two machines pushed the same skill back and forth, each seeing an update the other had just "made". Line endings alone no longer count as a difference. Everything else still does: a file the comparison cannot read, a directory it cannot enter, and content that is not valid UTF-8 all keep their byte-exact treatment rather than being assumed to match, and the stored identity of a skill is unchanged. Thanks to @WingSky2022 (#440).
+- **GitLab Duo is now a built-in agent** (54 supported out of the box). It deploys to `~/.gitlab/duo/skills` and also discovers skills in the shared `~/.agents/skills` root. **On Windows, set the skills directory manually**: GitLab Duo reads `%APPDATA%\GitLab\duo\skills`, which this release does not detect automatically, so Duo will otherwise show as not installed. (#433)
+- **Fixed: the update confirmation dialog could not be dismissed when it listed many files.** Updating a skill whose new version drops a lot of files grew the dialog past the top and bottom of the window, with no scrollbar and both buttons off screen. The dialog now caps its height and scrolls the file list instead, at every text size. (#430)
+- **Fixed: an imported skill could permanently report "source missing" after its source directory was adopted.** When the agent directory a skill was imported from got turned into a managed deployment, removing that deployment orphaned the skill's source — update checks then failed forever even though the central copy was intact. The source is now re-pointed at the central copy before the replacement happens. A skill whose source is reached through a symlink is left alone, since the symlink is only unlinked and the real folder survives. (#425)
+
+### Developer & Governance
+- The byte hash `hash_entries` is untouched and remains every skill's stored identity. The line-ending comparison is a separate, stricter function consulted only when two byte hashes already disagree, so no stored hash is invalidated and no migration is needed.
+- `npm run release:prepare` now syncs `package-lock.json` alongside `package.json`. Its version field had been stale at 1.22.1 while the app was at 1.38.0, so every contributor's `npm install` produced a stray diff.
+- Corrected the GitLab Duo adapter's path comment, which described the Windows location correctly and then claimed the Unix path applied everywhere but the `XDG_CONFIG_HOME` / `GLAB_CONFIG_DIR` cases — omitting Windows itself.
 ## [1.38.0] - 2026-09-08
 
 ### Release Overview
