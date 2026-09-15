@@ -831,17 +831,26 @@ pub fn default_tool_adapters() -> Vec<ToolAdapter> {
         ToolAdapter {
             // The GitLab Duo CLI (launched as `glab duo cli`) resolves its
             // config home to `%APPDATA%\GitLab\duo` on Windows,
-            // `$XDG_CONFIG_HOME/gitlab/duo` when that variable is set, and
-            // `~/.gitlab/duo` otherwise -- then scans `skills` beneath it. So
-            // `~/.gitlab/duo/skills` is the deploy target everywhere except a
-            // machine that exports `XDG_CONFIG_HOME` or `GLAB_CONFIG_DIR`;
-            // those two cases need a manual path override, because adapters
-            // resolve paths from the home directory and read no env vars.
+            // `$GLAB_CONFIG_DIR` or `$XDG_CONFIG_HOME/gitlab/duo` when either
+            // is set (GLAB_CONFIG_DIR wins), and `~/.gitlab/duo` otherwise --
+            // then scans `skills` beneath it.
+            //
+            // Adapters resolve paths from the home directory and read no env
+            // vars, so `~/.gitlab/duo/skills` is right on Linux and macOS at
+            // their defaults and nowhere else. THREE cases need a manual path
+            // override, Windows included: there the real location is
+            // `%APPDATA%\GitLab\duo`, not `%USERPROFILE%\.gitlab\duo`, so
+            // `is_installed()` finds nothing and Duo shows as not installed.
+            // Covering that properly needs per-platform adapter paths, which
+            // no adapter has today -- tracked separately, do not bolt a
+            // GitLab-shaped special case into `candidate_paths`.
             //
             // Duo also reads the shared `~/.agents/skills` root -- the location
             // `glab skills install --global` writes to. Discovery only, like
             // Codex and Copilot, so a deployment lands in Duo's own directory
-            // and cannot be mistaken for another agent's.
+            // and cannot be mistaken for another agent's. This one *is* right
+            // on all three platforms: the shared root is `%USERPROFILE%\.agents\skills`
+            // on Windows, which is what resolving from the home dir already gives.
             //
             // Its project-level roots are `<repo>/.agents/skills` and
             // `<repo>/skills`. The bare `skills` variant would claim any
