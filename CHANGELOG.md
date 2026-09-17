@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.0] - 2026-09-17
+
+### Release Overview
+- Adding skills in bulk, a project workspace that counts each skill once, and an end to the disk thrashing the update check caused on macOS.
+
+### User-facing
+- **Add skills in bulk** — The Add Skills sheet gains Select all / Deselect all and Shift+click range selection, with a count of what is selected. Setting up a new project meant clicking every skill individually; enabling 10–30 at once is now two clicks. Only skills that are actually addable in the current filtered view are touched. Thanks to @ZhuYichuan (#428).
+- **A project workspace now counts each skill once** — A repository that ships several skills was miscounted: the same skill deployed to three agents counted as three, and sync health was tallied per copy rather than per skill. Worse, matching a project copy back to its library skill scored the candidates and took the highest, so a tie was broken arbitrarily — two skills with identical content could bind a copy to the wrong one and show a sync status belonging to another skill. Copies are now grouped before counting, with a group reporting the most severe status it carries, and the match resolves in layers, refusing to guess when a layer leaves more than one candidate. Thanks to @lijianqiang12 (#267, #262).
+- **macOS: checking all updates no longer thrashes the disk** — Every acquisition of the central repository lock fsynced its stamp file, which on macOS flushes the whole volume's cache and bills every dirty page in it — including other processes' — to this app. The update check takes that lock once per skill by design, so a library of ~75 skills issued 75 whole-volume barriers per round; one hour of it was reported by the system as 2.1 GB of "file backed memory dirtied", 24x over the disk-writes limit. The stamp exists only to name the operation holding the lock, and mutual exclusion comes from `flock`, never from the file's contents.
+- **A non-Chinese interface no longer falls back to Chinese** — Any string without a translation in the selected language showed Simplified Chinese. English is the fallback everywhere now, except Traditional Chinese, which still falls back to Simplified. Thanks to @jonathanleiva15 (#394).
+- **Fixed: Shift+clicking a range painted the rows' text in highlight blue**, because the browser extends its own text selection from the previous click. The picker rows are click targets rather than prose, so they now opt out of text selection.
+
+### Developer & Governance
+- The Vite dev server no longer watches `src-tauri/target`, where a single `cargo build` produced tens of thousands of file events and stalled hot reload. Thanks to @loeanxi (#397).
+- Two defects were found reviewing #267 before release. The new layered match put the central directory name above the content hash, so a library holding both `Code Review` and `code-review` bound the first one's export — written under the slug `code-review` — to the second one's row; since importing a project copy back installs into the matched row's directory, that would have overwritten the other skill. A hash identifying exactly one skill is now consulted right after `source_ref`, while several skills sharing a hash still fall through to the directory and name layers, so #267's own fix is untouched. Separately, a preset with copies on some but not all of a project's agents reported as never applied rather than partially applied.
+- The comments #267 added were translated to English, matching the rest of the codebase.
 ## [1.39.0] - 2026-09-15
 
 ### Release Overview
