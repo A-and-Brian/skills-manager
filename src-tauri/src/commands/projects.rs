@@ -178,7 +178,8 @@ fn project_agent_targets_for_record(
         .collect()
 }
 
-/// 将项目记录转换为 DTO，并按 relative_path 聚合多个 agent 下的同一逻辑 skill。
+/// Convert a project record into its DTO, folding the copies of one logical
+/// skill across agents together by relative path.
 fn project_to_dto(
     rec: &ProjectRecord,
     all_managed: &[SkillRecord],
@@ -226,7 +227,8 @@ fn project_to_dto(
     }
 }
 
-/// 返回同步状态的严重程度，用于合并同一逻辑 skill 的多个 agent 副本。
+/// Severity of a sync status, used to reduce one logical skill's per-agent
+/// copies to a single verdict: the worst one the group carries.
 fn sync_status_priority(status: &str) -> u8 {
     match status {
         "diverged" => 5,
@@ -458,14 +460,15 @@ pub(crate) fn find_best_center_match<'a>(
     let skill_hash = skill.content_hash.as_deref();
     let canonical_skill_path = std::fs::canonicalize(&skill.path).ok();
 
-    // source_ref 是最强的直接关联信号。
+    // source_ref is the strongest direct link there is.
     if let Some(managed) = all_managed.iter().find(|managed| {
         source_ref_matches_skill_path(&skill.path, canonical_skill_path.as_ref(), managed)
     }) {
         return Some(managed);
     }
 
-    // 中央目录名比 frontmatter name 更稳定；一个仓库中的多个 skill 可能共享后者。
+    // The central directory name is steadier than the frontmatter name:
+    // several skills shipped from one repo can share the latter.
     let by_central_dir: Vec<&SkillRecord> = all_managed
         .iter()
         .filter(|managed| {
@@ -479,7 +482,7 @@ pub(crate) fn find_best_center_match<'a>(
         return Some(managed);
     }
 
-    // 兼容名称和目录一致的普通 skill。
+    // Covers the ordinary skill whose name and directory agree.
     let by_name: Vec<&SkillRecord> = all_managed
         .iter()
         .filter(|managed| {
@@ -490,7 +493,9 @@ pub(crate) fn find_best_center_match<'a>(
         return Some(managed);
     }
 
-    // 哈希只在能唯一定位时作为兜底，避免相同内容的多个 skill 被任意匹配。
+    // Content hash is the last resort, and only when it identifies exactly
+    // one skill: matching on content alone picks an arbitrary row among
+    // identical copies, which is the miscount this fix exists to remove.
     let hash = skill_hash?;
     let mut by_hash = all_managed
         .iter()
@@ -499,7 +504,8 @@ pub(crate) fn find_best_center_match<'a>(
     by_hash.next().is_none().then_some(first)
 }
 
-/// 从同一身份信号的候选项中选出唯一 skill，必要时使用哈希消歧。
+/// Pick the one skill among candidates sharing an identity signal,
+/// disambiguating by content hash when the signal alone leaves several.
 fn unique_center_match<'a>(
     candidates: &[&'a SkillRecord],
     skill_hash: Option<&str>,
@@ -1284,7 +1290,8 @@ mod tests {
         }
     }
 
-    /// 构造带指定身份信息的中央 skill，便于验证分层匹配顺序。
+    /// Build a library skill with the given identity fields, so a test can
+    /// assert the order the layers resolve in.
     fn managed_skill_with_identity(
         id: &str,
         name: &str,
@@ -1338,7 +1345,8 @@ mod tests {
         }
     }
 
-    /// 构造指定目录名和 agent 的项目 skill，便于模拟多 agent 副本。
+    /// Build a project skill with the given directory name and agent, to
+    /// stand in for one per-agent copy.
     fn project_skill_with_dir(
         dir_name: &str,
         path: String,
@@ -1364,7 +1372,7 @@ mod tests {
         }
     }
 
-    /// 目录身份必须优先于会被多个 skill 共享的内容哈希。
+    /// Directory identity must win over a content hash several skills share.
     #[test]
     fn find_best_center_match_prefers_directory_identity_over_shared_hash() {
         let shared_hash = Some("same-content-hash".to_string());
@@ -1394,7 +1402,7 @@ mod tests {
         assert_eq!(matched.id, "adapt-id");
     }
 
-    /// 中央目录名必须优先于可能重复的 frontmatter 名称。
+    /// The central directory name must win over a frontmatter name that repeats.
     #[test]
     fn find_best_center_match_uses_central_directory_before_frontmatter_name() {
         let project = project_skill_with_dir(
@@ -1423,7 +1431,8 @@ mod tests {
         assert_eq!(matched.id, "adapt-id");
     }
 
-    /// 侧栏项目计数按逻辑 skill 去重，不按 agent 副本累加。
+    /// The sidebar project count dedupes by logical skill rather than adding
+    /// up per-agent copies.
     #[test]
     fn project_to_dto_counts_logical_skills_not_agent_copies() {
         let tmp = tempdir().unwrap();

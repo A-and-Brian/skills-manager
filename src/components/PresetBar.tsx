@@ -16,7 +16,7 @@ export interface PresetBarProps {
   onAddSkill: (skill: ManagedSkill, agentKey: string) => Promise<void>;
   onRemoveSkill: (skill: ManagedSkill, agentKey: string) => Promise<void>;
   onComplete: () => Promise<void>;
-  /** 控制状态角标按 agent 副本还是逻辑 skill 统计。 */
+  /** Whether the status badge counts agent copies or logical skills. */
   statusMode?: PresetStatusMode;
 }
 

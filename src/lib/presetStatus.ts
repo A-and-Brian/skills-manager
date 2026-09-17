@@ -8,10 +8,10 @@ export interface PresetStatusResult {
   total: number;
 }
 
-/** Preset 状态统计的粒度。 */
+/** Granularity of the preset status tally. */
 export type PresetStatusMode = "agent-pair" | "logical-skill";
 
-/** 计算 Preset 在当前工作区中的安装状态。 */
+/** How much of a preset is installed in the current workspace. */
 export function computePresetStatus(
   preset: Preset,
   skills: ManagedSkill[],
