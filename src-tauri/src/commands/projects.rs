@@ -467,6 +467,29 @@ pub(crate) fn find_best_center_match<'a>(
         return Some(managed);
     }
 
+    // A content hash that names exactly one library skill outranks any
+    // directory or name evidence: it says the two directories hold the same
+    // bytes, while a directory name only says they were once called the same
+    // thing. An export written under a slugified name can land on a directory
+    // that now reads as a *different* skill (a library holding both
+    // "Code Review" and "code-review" exports the first as `code-review`),
+    // and this match also decides where an import writes back — binding the
+    // wrong row there overwrites the other skill.
+    //
+    // Only a unique hash qualifies. Several skills sharing one hash is the
+    // arbitrary-pick this fix exists to remove, and those fall through to the
+    // directory and name layers below.
+    if let Some(hash) = skill_hash {
+        let mut by_hash = all_managed
+            .iter()
+            .filter(|managed| managed.content_hash.as_deref() == Some(hash));
+        if let Some(first) = by_hash.next() {
+            if by_hash.next().is_none() {
+                return Some(first);
+            }
+        }
+    }
+
     // The central directory name is steadier than the frontmatter name:
     // several skills shipped from one repo can share the latter.
     let by_central_dir: Vec<&SkillRecord> = all_managed
@@ -493,15 +516,7 @@ pub(crate) fn find_best_center_match<'a>(
         return Some(managed);
     }
 
-    // Content hash is the last resort, and only when it identifies exactly
-    // one skill: matching on content alone picks an arbitrary row among
-    // identical copies, which is the miscount this fix exists to remove.
-    let hash = skill_hash?;
-    let mut by_hash = all_managed
-        .iter()
-        .filter(|managed| managed.content_hash.as_deref() == Some(hash));
-    let first = by_hash.next()?;
-    by_hash.next().is_none().then_some(first)
+    None
 }
 
 /// Pick the one skill among candidates sharing an identity signal,
@@ -1429,6 +1444,40 @@ mod tests {
         let matched = find_best_center_match(&project, &all_managed).unwrap();
 
         assert_eq!(matched.id, "adapt-id");
+    }
+
+    /// A unique content hash outranks a directory name owned by a different
+    /// skill. A library holding both "Code Review" and "code-review" exports
+    /// the first under the slug `code-review`, which is the second one's
+    /// library directory — matching on the directory binds the copy to the
+    /// wrong row, and that row is also where an import writes back.
+    #[test]
+    fn find_best_center_match_prefers_a_unique_hash_over_another_skills_directory() {
+        let exported_hash = Some("code-review-content".to_string());
+        let project = project_skill_with_dir(
+            "code-review",
+            "/tmp/project/.claude/skills/code-review".to_string(),
+            exported_hash.clone(),
+            "claude_code",
+        );
+        let all_managed = vec![
+            managed_skill_with_identity(
+                "spaced-id",
+                "Code Review",
+                "/tmp/center/Code Review".to_string(),
+                exported_hash,
+            ),
+            managed_skill_with_identity(
+                "slug-id",
+                "code-review",
+                "/tmp/center/code-review".to_string(),
+                Some("unrelated-content".to_string()),
+            ),
+        ];
+
+        let matched = find_best_center_match(&project, &all_managed).unwrap();
+
+        assert_eq!(matched.id, "spaced-id");
     }
 
     /// The sidebar project count dedupes by logical skill rather than adding
