@@ -1123,6 +1123,18 @@ pub fn run() {
             commands::projects::reorder_projects,
             commands::presets::get_preset_skill_order,
             commands::presets::reorder_preset_skills,
+            // Remote hosts
+            commands::remote_hosts::remote_hosts_list,
+            commands::remote_hosts::remote_host_add,
+            commands::remote_hosts::remote_host_update,
+            commands::remote_hosts::remote_host_remove,
+            commands::remote_hosts::remote_host_probe,
+            commands::remote_hosts::remote_host_tools,
+            commands::remote_hosts::remote_host_skills,
+            commands::remote_hosts::remote_host_deploy,
+            commands::remote_hosts::remote_host_undeploy,
+            commands::remote_hosts::remote_host_install,
+            commands::remote_hosts::remote_host_update_skill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
