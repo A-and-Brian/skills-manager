@@ -1078,7 +1078,7 @@
       "removeManaged": "从 Agent 移除",
       "deleteLocal": "删除本地 Skill",
       "deleteLocalConfirmTitle": "删除本地 Skill？",
-      "deleteLocalConfirmMessage": "从 {{agent}} 中删除“{{name}}”？此操作会删除本地文件且不可恢复。",
+      "deleteLocalConfirmMessage": "从 {{agent}} 中删除“{{name}}”？此操作会删除本地文件且不可恢复。库中的副本（如有）不受影响。",
       "deletedLocalToast": "已从 {{agent}} 删除“{{name}}”。",
       "uploadedToast": "已将“{{name}}”上传到 Skills 中心，未自动同步回 {{agent}}。",
       "pulledToast": "已从 Skills 中心更新 {{agent}} 中的“{{name}}”。",
@@ -1094,7 +1094,7 @@
         "diverged": "冲突"
       },
       "deleteLocalSelected": "永久删除 {{count}} 个",
-      "deleteLocalBatchConfirm": "永久删除 {{agent}} 里的 {{count}} 个本地 Skill？这些 Skill 只存在于该 Agent 目录，删除后无法恢复。",
+      "deleteLocalBatchConfirm": "永久删除 {{agent}} 里的 {{count}} 个本地 Skill？此操作会删除本地文件且不可恢复。库中的副本（如有）不受影响。",
       "deletedLocalBatch": "已删除 {{count}} 个本地 Skill",
       "deleteLocalBatchFailed": "{{count}} 个本地 Skill 删除失败"
     }

@@ -994,7 +994,7 @@
       "removeManaged": "從 Agent 移除",
       "deleteLocal": "刪除本機 Skill",
       "deleteLocalConfirmTitle": "刪除本機 Skill？",
-      "deleteLocalConfirmMessage": "從 {{agent}} 中刪除「{{name}}」？此操作會刪除本機檔案且不可復原。",
+      "deleteLocalConfirmMessage": "從 {{agent}} 中刪除「{{name}}」？此操作會刪除本機檔案且不可復原。庫中的副本（如有）不受影響。",
       "deletedLocalToast": "已從 {{agent}} 刪除「{{name}}」。",
       "uploadedToast": "已將「{{name}}」上傳到 Skills 中心，未自動同步回 {{agent}}。",
       "pulledToast": "已從 Skills 中心更新 {{agent}} 中的「{{name}}」。",
@@ -1010,7 +1010,7 @@
         "diverged": "衝突"
       },
       "deleteLocalSelected": "永久刪除 {{count}} 個",
-      "deleteLocalBatchConfirm": "永久刪除 {{agent}} 裡的 {{count}} 個本機 Skill？這些 Skill 只存在於該 Agent 目錄，刪除後無法復原。",
+      "deleteLocalBatchConfirm": "永久刪除 {{agent}} 裡的 {{count}} 個本機 Skill？此操作會刪除本機檔案且不可復原。庫中的副本（如有）不受影響。",
       "deletedLocalBatch": "已刪除 {{count}} 個本機 Skill",
       "deleteLocalBatchFailed": "{{count}} 個本機 Skill 刪除失敗"
     }

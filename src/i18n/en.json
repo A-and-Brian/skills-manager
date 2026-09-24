@@ -1078,7 +1078,7 @@
       "removeManaged": "Remove from agent",
       "deleteLocal": "Delete local skill",
       "deleteLocalConfirmTitle": "Delete local skill?",
-      "deleteLocalConfirmMessage": "Delete \"{{name}}\" from {{agent}}? This removes the local files and cannot be undone.",
+      "deleteLocalConfirmMessage": "Delete \"{{name}}\" from {{agent}}? This removes the local files and cannot be undone. A copy in your library, if there is one, is not affected.",
       "deletedLocalToast": "Deleted \"{{name}}\" from {{agent}}.",
       "uploadedToast": "Uploaded \"{{name}}\" to Skills Center. It was not synced back to {{agent}}.",
       "pulledToast": "Updated \"{{name}}\" from Skills Center in {{agent}}.",
@@ -1094,7 +1094,7 @@
         "diverged": "Conflict"
       },
       "deleteLocalSelected": "Delete {{count}} permanently",
-      "deleteLocalBatchConfirm": "Permanently delete {{count}} local skills from {{agent}}? They exist only in this agent’s folder and cannot be recovered.",
+      "deleteLocalBatchConfirm": "Permanently delete {{count}} local skills from {{agent}}? This removes the local files and cannot be undone. Copies in your library, if any, are not affected.",
       "deletedLocalBatch": "{{count}} local skills deleted",
       "deleteLocalBatchFailed": "{{count}} local skills failed to delete"
     }
