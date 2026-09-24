@@ -404,6 +404,29 @@
       "git": "Git",
       "skillssh": "skills.sh"
     },
+    "groupBy": {
+      "label": "Group by",
+      "none": "No groups",
+      "tag": "By tag",
+      "source": "By source",
+      "agent": "By agent"
+    },
+    "sortBy": {
+      "label": "Sort",
+      "name": "Name",
+      "updated": "Recently updated",
+      "added": "Recently added",
+      "update_status": "Update status"
+    },
+    "agentFilter": {
+      "notDeployed": "Not deployed"
+    },
+    "updateFilter": {
+      "update_available": "Update available",
+      "error": "Check failed",
+      "up_to_date": "Up to date",
+      "local": "Local source"
+    },
     "tags": {
       "filter": "Tags",
       "allTags": "All Tags",

@@ -404,6 +404,29 @@
       "git": "Git",
       "skillssh": "skills.sh"
     },
+    "groupBy": {
+      "label": "分组",
+      "none": "不分组",
+      "tag": "按标签",
+      "source": "按来源",
+      "agent": "按 Agent"
+    },
+    "sortBy": {
+      "label": "排序",
+      "name": "名称",
+      "updated": "最近更新",
+      "added": "最近添加",
+      "update_status": "更新状态"
+    },
+    "agentFilter": {
+      "notDeployed": "未部署"
+    },
+    "updateFilter": {
+      "update_available": "有更新",
+      "error": "检查失败",
+      "up_to_date": "已是最新",
+      "local": "本地来源"
+    },
     "tags": {
       "filter": "标签",
       "allTags": "全部标签",
