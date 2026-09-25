@@ -6,7 +6,7 @@ use std::path::Path;
 #[cfg(unix)]
 use super::agents_model::{agent_skill_configs, read_workspace_skills, vendored_variant};
 #[cfg(unix)]
-use super::update_vendored_from_center;
+use super::center_sync::update_vendored_from_center;
 #[cfg(unix)]
 use crate::core::error::AppError;
 use crate::core::skill_store::{ProjectRecord, SkillStore};
