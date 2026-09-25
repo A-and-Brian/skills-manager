@@ -3,12 +3,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
-use app_lib::commands::{presets as preset_cmd, skills as cmd, tools as tool_cmd};
+use app_lib::commands::{presets as preset_cmd, tools as tool_cmd};
 use app_lib::core::{
     app_state, audit_log::AuditDraft, central_repo, error::AppError, git_backup, git_fetcher,
     installer, merge, repo_lock::RepoLock, scenario_service, serve, skill_delete, skill_install,
-    skill_metadata, skill_source, skill_store::SkillStore, skill_tags, skill_update, skillssh_api,
-    sync_engine, sync_metadata, tool_adapters, tool_service,
+    skill_metadata, skill_source, skill_store::SkillStore, skill_tags, skill_update,
+    skill_update_check, skillssh_api, sync_engine, sync_metadata, tool_adapters, tool_service,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
@@ -1806,25 +1806,29 @@ fn run_check(
             });
             continue;
         }
-        let report =
-            match cmd::check_skill_update_internal(store, &skill.id, force, proxy_url.as_deref()) {
-                Ok(dto) => CheckReport {
-                    skill_id: dto.id,
-                    name: dto.name,
-                    source_type: dto.source_type,
-                    update_status: dto.update_status,
-                    last_check_error: dto.last_check_error,
-                    skipped: false,
-                },
-                Err(e) => CheckReport {
-                    skill_id: skill.id.clone(),
-                    name: skill.name.clone(),
-                    source_type: skill.source_type.clone(),
-                    update_status: "error".to_string(),
-                    last_check_error: Some(e.message.clone()),
-                    skipped: false,
-                },
-            };
+        let report = match skill_update_check::check_skill_update_internal(
+            store,
+            &skill.id,
+            force,
+            proxy_url.as_deref(),
+        ) {
+            Ok(dto) => CheckReport {
+                skill_id: dto.id,
+                name: dto.name,
+                source_type: dto.source_type,
+                update_status: dto.update_status,
+                last_check_error: dto.last_check_error,
+                skipped: false,
+            },
+            Err(e) => CheckReport {
+                skill_id: skill.id.clone(),
+                name: skill.name.clone(),
+                source_type: skill.source_type.clone(),
+                update_status: "error".to_string(),
+                last_check_error: Some(e.message.clone()),
+                skipped: false,
+            },
+        };
         reports.push(report);
     }
 

@@ -39,6 +39,7 @@ pub mod skill_source;
 pub mod skill_store;
 pub mod skill_tags;
 pub mod skill_update;
+pub mod skill_update_check;
 pub mod skillssh_api;
 pub mod sync_engine;
 pub mod sync_metadata;

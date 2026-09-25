@@ -5,11 +5,12 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime};
 
-use crate::commands::skills::{
-    check_skill_update_internal_with_remote, prefetch_skill_remote, update_git_skill_internal,
-};
 use crate::core::repo_lock::RepoLock;
 use crate::core::skill_store::SkillStore;
+use crate::core::skill_update::update_git_skill_internal;
+use crate::core::skill_update_check::{
+    check_skill_update_internal_with_remote, prefetch_skill_remote,
+};
 
 const SETTING_INTERVAL: &str = "auto_update_check_interval";
 const SETTING_LAST_RUN: &str = "auto_update_last_run_at";

@@ -571,7 +571,7 @@ fn check_updates_from_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
                 std::thread::sleep(std::time::Duration::from_millis(200));
                 // Resolve off the lock, then take it only for the status
                 // write — the lock must never span a network round-trip (#315).
-                let prefetched = commands::skills::prefetch_skill_remote(
+                let prefetched = core::skill_update_check::prefetch_skill_remote(
                     &store_for_task,
                     &skill_id,
                     true,
@@ -587,7 +587,7 @@ fn check_updates_from_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
                         continue;
                     }
                 };
-                if let Err(err) = commands::skills::check_skill_update_internal_with_remote(
+                if let Err(err) = core::skill_update_check::check_skill_update_internal_with_remote(
                     &store_for_task,
                     &skill_id,
                     true,
