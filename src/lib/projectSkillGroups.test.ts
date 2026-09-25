@@ -8,6 +8,7 @@ function variant(agent: string, displayName: string, overrides: Partial<ProjectS
     dir_name: "review",
     relative_path: "review",
     description: null,
+    author: null,
     path: `/p/.${agent}/skills/review`,
     files: ["SKILL.md"],
     enabled: true,

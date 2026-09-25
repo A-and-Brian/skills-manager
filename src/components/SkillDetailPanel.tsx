@@ -27,6 +27,8 @@ import { SkillMarkdown } from "./SkillMarkdown";
 import { AgentToggleSection, type AgentToggleItem } from "./AgentToggleSection";
 import { SkillProjectsSection } from "./SkillProjectsSection";
 import { SyncDots } from "./SyncDots";
+import { CreatorBadge } from "./CreatorBadge";
+import { creatorLabel, skillCreator } from "../lib/skillCreator";
 
 interface Props {
   skill: ManagedSkill | null;
@@ -197,8 +199,10 @@ function SkillDetailPanelContent({
 
   const sourceTypeLabel = (type: string) => (type === "skillssh" ? "skills.sh" : type);
 
+  const creator = skillCreator(skill);
   const metadataItems = [
     { label: t("mySkills.sourceType"), value: sourceTypeLabel(skill.source_type) },
+    { label: t("mySkills.creator.label"), value: creatorLabel(creator) || t("mySkills.creator.local") },
     { label: t("mySkills.sourceRef"), value: skill.source_ref },
     { label: t("mySkills.sourceResolved"), value: skill.source_ref_resolved },
     { label: t("mySkills.sourceBranch"), value: skill.source_branch },
@@ -227,10 +231,16 @@ function SkillDetailPanelContent({
   const meta = (
     <>
       <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
-        {tools && <SyncDots skill={skill} tools={tools} size="sm" includeOrphan />}
+        <CreatorBadge creator={creator} size="md" />
+        {tools && (
+          <>
+            <span className="mx-0.5 h-3 w-px bg-border-subtle" />
+            <SyncDots skill={skill} tools={tools} size="sm" includeOrphan />
+          </>
+        )}
         {skill.tags.length > 0 && (
           <>
-            {tools && <span className="mx-0.5 h-3 w-px bg-border-subtle" />}
+            <span className="mx-0.5 h-3 w-px bg-border-subtle" />
             {skill.tags.map((tag) => (
               <span
                 key={tag}

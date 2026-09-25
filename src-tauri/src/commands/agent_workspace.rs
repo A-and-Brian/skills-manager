@@ -783,6 +783,7 @@ mod tests {
             dir_name: "local-tool".to_string(),
             relative_path: "local-tool".to_string(),
             description: Some("Agent copy".to_string()),
+            author: None,
             path: "/tmp/agent-skills/local-tool".to_string(),
             files: vec![],
             enabled: true,

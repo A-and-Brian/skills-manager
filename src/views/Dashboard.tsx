@@ -4,6 +4,8 @@ import { Layers, CheckCircle2, Bot, Plus, Download, AlertTriangle } from "lucide
 import { useTranslation } from "react-i18next";
 import { useApp } from "../context/AppContext";
 import { AgentControlSetupCard } from "../components/AgentControlSetupCard";
+import { CreatorBadge } from "../components/CreatorBadge";
+import { skillCreator } from "../lib/skillCreator";
 
 export function Dashboard() {
   const { t } = useTranslation();
@@ -148,6 +150,7 @@ export function Dashboard() {
                       <span className="text-[9px] px-1.5 py-px rounded bg-surface-hover text-muted border border-border font-normal">
                         {skill.source_type}
                       </span>
+                      <CreatorBadge creator={skillCreator(skill)} hideLocal className="font-normal" />
                     </h4>
                     <p className="text-[13px] text-muted mt-px">
                       {skill.targets.length > 0

@@ -409,7 +409,13 @@
       "none": "No groups",
       "tag": "By tag",
       "source": "By source",
-      "agent": "By agent"
+      "agent": "By agent",
+      "creator": "By creator"
+    },
+    "creator": {
+      "label": "Creator",
+      "local": "Local",
+      "openRepo": "Open {{repo}} on {{host}}"
     },
     "sortBy": {
       "label": "Sort",

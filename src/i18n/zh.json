@@ -409,7 +409,13 @@
       "none": "不分组",
       "tag": "按标签",
       "source": "按来源",
-      "agent": "按 Agent"
+      "agent": "按 Agent",
+      "creator": "按创建者"
+    },
+    "creator": {
+      "label": "创建者",
+      "local": "本地",
+      "openRepo": "在 {{host}} 打开 {{repo}}"
     },
     "sortBy": {
       "label": "排序",

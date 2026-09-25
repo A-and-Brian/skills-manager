@@ -379,7 +379,13 @@
       "none": "不分組",
       "tag": "依標籤",
       "source": "依來源",
-      "agent": "依 Agent"
+      "agent": "依 Agent",
+      "creator": "依建立者"
+    },
+    "creator": {
+      "label": "建立者",
+      "local": "本機",
+      "openRepo": "在 {{host}} 開啟 {{repo}}"
     },
     "sortBy": {
       "label": "排序",

@@ -1,8 +1,12 @@
 use std::path::Path;
 
+#[derive(Default)]
 pub struct SkillMeta {
     pub name: Option<String>,
     pub description: Option<String>,
+    /// Who wrote the skill: `author`, else `metadata.author` (the Agent
+    /// Skills spec nests extra keys under `metadata`).
+    pub author: Option<String>,
 }
 
 fn read_named_file_exact(dir: &Path, target_name: &str) -> Option<String> {
@@ -38,19 +42,13 @@ fn parse_skill_md_with_candidates(dir: &Path, candidates: &[&str]) -> SkillMeta 
             return parse_frontmatter(&content);
         }
     }
-    SkillMeta {
-        name: None,
-        description: None,
-    }
+    SkillMeta::default()
 }
 
 fn parse_frontmatter(content: &str) -> SkillMeta {
     let trimmed = content.trim();
     if !trimmed.starts_with("---") {
-        return SkillMeta {
-            name: None,
-            description: None,
-        };
+        return SkillMeta::default();
     }
 
     let rest = &trimmed[3..];
@@ -65,14 +63,28 @@ fn parse_frontmatter(content: &str) -> SkillMeta {
                 .get("description")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            return SkillMeta { name, description };
+            let author = frontmatter_author(&yaml);
+            return SkillMeta {
+                name,
+                description,
+                author,
+            };
         }
     }
 
-    SkillMeta {
-        name: None,
-        description: None,
-    }
+    SkillMeta::default()
+}
+
+fn frontmatter_author(yaml: &serde_yaml::Value) -> Option<String> {
+    let as_name = |v: &serde_yaml::Value| {
+        v.as_str()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    yaml.get("author")
+        .and_then(as_name)
+        .or_else(|| yaml.get("metadata")?.get("author").and_then(as_name))
 }
 
 /// Skill directory marker files used across the application.
@@ -217,6 +229,23 @@ mod tests {
         let content = "---\nname: foo\nauthor: bar\nversion: 1.0\n---\n";
         let meta = parse_frontmatter(content);
         assert_eq!(meta.name.as_deref(), Some("foo"));
+        assert_eq!(meta.author.as_deref(), Some("bar"));
+    }
+
+    #[test]
+    fn parse_frontmatter_author_under_metadata() {
+        let content = "---\nname: foo\nmetadata:\n  author: acme\n---\n";
+        let meta = parse_frontmatter(content);
+        assert_eq!(meta.author.as_deref(), Some("acme"));
+    }
+
+    #[test]
+    fn parse_frontmatter_author_missing_or_blank() {
+        assert_eq!(parse_frontmatter("---\nname: foo\n---\n").author, None);
+        assert_eq!(
+            parse_frontmatter("---\nname: foo\nauthor: '  '\n---\n").author,
+            None
+        );
     }
 
     // ── parse_skill_md (filesystem) ──

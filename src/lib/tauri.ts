@@ -21,6 +21,8 @@ export interface ManagedSkill {
   id: string;
   name: string;
   description: string | null;
+  /** SKILL.md frontmatter author, when the skill names one. */
+  author: string | null;
   source_type: string;
   source_ref: string | null;
   source_ref_resolved: string | null;
@@ -238,6 +240,8 @@ export interface ProjectSkill {
   dir_name: string;
   relative_path: string;
   description: string | null;
+  /** SKILL.md frontmatter author, when the skill names one. */
+  author: string | null;
   path: string;
   files: string[];
   enabled: boolean;

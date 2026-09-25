@@ -1,15 +1,16 @@
 import type { ManagedSkill } from "./tauri";
+import { creatorKey, creatorLabel, creatorName, LOCAL_CREATOR, skillCreator, type SkillCreator } from "./skillCreator";
 
 /**
  * Pure filter / sort / group logic for the Library view. Kept out of the React
  * component so it can be unit-tested against plain skill records.
  */
 
-export type LibraryGroupBy = "none" | "tag" | "source" | "agent";
+export type LibraryGroupBy = "none" | "tag" | "source" | "agent" | "creator";
 export type LibrarySortBy = "name" | "updated" | "added" | "update_status";
 export type LibraryUpdateFilter = "update_available" | "error" | "up_to_date" | "local";
 
-export const LIBRARY_GROUP_BY_OPTIONS: readonly LibraryGroupBy[] = ["none", "tag", "source", "agent"];
+export const LIBRARY_GROUP_BY_OPTIONS: readonly LibraryGroupBy[] = ["none", "tag", "source", "agent", "creator"];
 export const LIBRARY_SORT_BY_OPTIONS: readonly LibrarySortBy[] = ["name", "updated", "added", "update_status"];
 export const LIBRARY_UPDATE_FILTERS: readonly LibraryUpdateFilter[] = ["update_available", "error", "up_to_date", "local"];
 
@@ -27,6 +28,8 @@ export interface LibraryQuery {
   untaggedSentinel: string;
   /** Agent keys, or NOT_DEPLOYED. */
   agents: ReadonlySet<string>;
+  /** Creator keys from `creatorKey`, or LOCAL_CREATOR. */
+  creators: ReadonlySet<string>;
   updates: ReadonlySet<LibraryUpdateFilter>;
   sortBy: LibrarySortBy;
   groupBy: LibraryGroupBy;
@@ -35,7 +38,7 @@ export interface LibraryQuery {
 }
 
 export interface SkillGroup {
-  /** Raw group value (tag name, source_type, agent key, or a sentinel). */
+  /** Raw group value (tag name, source_type, agent key, creator key, or a sentinel). */
   key: string;
   skills: ManagedSkill[];
 }
@@ -60,6 +63,31 @@ function agentKeysOf(skill: ManagedSkill): string[] {
   return keys.length > 0 ? keys : [NOT_DEPLOYED];
 }
 
+export interface CreatorOption {
+  key: string;
+  creator: SkillCreator;
+  count: number;
+}
+
+/** Every creator in the list, most skills first, with "Local" last. */
+export function libraryCreators(skills: readonly ManagedSkill[]): CreatorOption[] {
+  const options = new Map<string, CreatorOption>();
+  for (const skill of skills) {
+    const creator = skillCreator(skill);
+    const key = creatorKey(creator);
+    const option = options.get(key);
+    if (option) option.count += 1;
+    else options.set(key, { key, creator, count: 1 });
+  }
+  const isLocal = (option: CreatorOption) => (option.key === LOCAL_CREATOR ? 1 : 0);
+  return [...options.values()].sort(
+    (a, b) =>
+      isLocal(a) - isLocal(b)
+      || b.count - a.count
+      || creatorName(a.creator).localeCompare(creatorName(b.creator))
+  );
+}
+
 export function filterLibrarySkills(
   skills: readonly ManagedSkill[],
   q: LibraryQuery,
@@ -67,7 +95,7 @@ export function filterLibrarySkills(
 ): ManagedSkill[] {
   return skills.filter((skill) => {
     if (q.search) {
-      const haystack = [skill.name, displayNameOf(skill), skill.description ?? ""];
+      const haystack = [skill.name, displayNameOf(skill), skill.description ?? "", creatorLabel(skillCreator(skill))];
       if (!haystack.some((text) => text.toLowerCase().includes(q.search))) return false;
     }
     if (q.sources.size > 0 && !q.sources.has(skill.source_type)) return false;
@@ -76,6 +104,7 @@ export function filterLibrarySkills(
       if (!matchUntagged && !skill.tags.some((tag) => q.tags.has(tag))) return false;
     }
     if (q.agents.size > 0 && !agentKeysOf(skill).some((key) => q.agents.has(key))) return false;
+    if (q.creators.size > 0 && !q.creators.has(creatorKey(skillCreator(skill)))) return false;
     if (q.updates.size > 0) {
       const bucket = updateFilterOf(skill);
       if (!bucket || !q.updates.has(bucket)) return false;
@@ -137,13 +166,15 @@ export function sortLibrarySkills(skills: readonly ManagedSkill[], q: LibraryQue
 /**
  * Split an already-sorted list into groups. A skill with several tags or
  * agents appears under each. Group order follows first appearance, except the
- * empty bucket (untagged / not deployed) which always comes last.
+ * empty bucket (untagged / not deployed / local) which always comes last. Tag
+ * and creator groups are alphabetical.
  */
 export function groupLibrarySkills(skills: readonly ManagedSkill[], groupBy: LibraryGroupBy): SkillGroup[] {
   if (groupBy === "none") return [{ key: "", skills: [...skills] }];
   const keysOf = (skill: ManagedSkill): string[] => {
     if (groupBy === "source") return [skill.source_type];
     if (groupBy === "agent") return agentKeysOf(skill);
+    if (groupBy === "creator") return [creatorKey(skillCreator(skill))];
     return skill.tags.length > 0 ? skill.tags : [NO_TAG_GROUP];
   };
   const buckets = new Map<string, ManagedSkill[]>();
@@ -155,11 +186,13 @@ export function groupLibrarySkills(skills: readonly ManagedSkill[], groupBy: Lib
     }
   }
   const groups = [...buckets].map(([key, list]) => ({ key, skills: list }));
-  const isEmptyBucket = (key: string) => key === NO_TAG_GROUP || key === NOT_DEPLOYED;
+  const isEmptyBucket = (key: string) => key === NO_TAG_GROUP || key === NOT_DEPLOYED || key === LOCAL_CREATOR;
+  const nameOf = (group: SkillGroup) => creatorName(skillCreator(group.skills[0]));
   return groups.sort((a, b) => {
     const aEmpty = isEmptyBucket(a.key) ? 1 : 0;
     const bEmpty = isEmptyBucket(b.key) ? 1 : 0;
     if (aEmpty !== bEmpty) return aEmpty - bEmpty;
-    return groupBy === "tag" ? a.key.localeCompare(b.key) : 0;
+    if (groupBy === "tag") return a.key.localeCompare(b.key);
+    return groupBy === "creator" ? nameOf(a).localeCompare(nameOf(b)) : 0;
   });
 }
