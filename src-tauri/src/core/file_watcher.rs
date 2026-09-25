@@ -468,6 +468,7 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
                 agent_keys: None,
+                deploy_mode: "link".to_string(),
             })
             .unwrap();
 
@@ -492,6 +493,7 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
                 agent_keys: None,
+                deploy_mode: "link".to_string(),
             })
             .unwrap();
     }

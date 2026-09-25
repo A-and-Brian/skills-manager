@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use std::ffi::{OsStr, OsString};
+use std::path::{Component, Path, PathBuf};
 
 /// Refuse to sync when `src` and `dst` overlap in either direction (equal,
 /// dst inside src, or src inside dst). Otherwise the recursive copy walks
@@ -586,6 +587,114 @@ pub fn remove_target(target: &Path) -> Result<()> {
     } else {
         std::fs::remove_file(target)?;
     }
+    Ok(())
+}
+
+/// The relative target for a link at `link` to `target`, both inside `root`:
+/// one `..` per directory between the link and `root`, then `target`'s path
+/// from `root`. Only plain components count, so `.` segments add no depth:
+/// `.codeium/windsurf/skills/x` → `../../../.agents/skills/x`.
+///
+/// Relative, so the link still resolves wherever the project is checked out.
+pub fn relative_link_target(link: &Path, target: &Path, root: &Path) -> Result<PathBuf> {
+    let link_parts = parts_within(link, root)?;
+    let target_parts = parts_within(target, root)?;
+    // A link inside its own target, or around it, would make a cycle.
+    if link_parts.is_empty()
+        || target_parts.starts_with(&link_parts)
+        || link_parts.starts_with(&target_parts)
+    {
+        anyhow::bail!("Cannot link {:?} to {:?}", link, target);
+    }
+    let mut relative: PathBuf = std::iter::repeat("..").take(link_parts.len() - 1).collect();
+    relative.extend(target_parts);
+    Ok(relative)
+}
+
+fn parts_within<'a>(path: &'a Path, root: &Path) -> Result<Vec<&'a OsStr>> {
+    let relative = path
+        .strip_prefix(root)
+        .with_context(|| format!("{:?} is not inside {:?}", path, root))?;
+    relative
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(Ok(part)),
+            Component::CurDir => None,
+            _ => Some(Err(anyhow::anyhow!(
+                "{:?} is not a plain path inside {:?}",
+                path,
+                root
+            ))),
+        })
+        .collect()
+}
+
+/// Make `link` a relative link (see [`relative_link_target`]) to the
+/// directory `target`. Nothing changes when it already is exactly that link;
+/// anything else there is replaced only as far as `policy` allows, which
+/// includes an absolute link to `target`.
+///
+/// No junction or copy fallback: where a symlink cannot be made (Windows
+/// without Developer Mode or the symlink privilege) this fails. The new link
+/// is made beside `link` first and only then moved over it, so a link that
+/// cannot be made leaves whatever was at `link` as it was.
+pub fn link_skill_relative(
+    link: &Path,
+    target: &Path,
+    root: &Path,
+    policy: ReplacePolicy<'_>,
+) -> Result<()> {
+    let relative = relative_link_target(link, target, root)?;
+    if std::fs::read_link(link).is_ok_and(|current| current == relative) {
+        return Ok(());
+    }
+    let state = authorize_replacement(target, link, policy)?;
+    let staged = staged_link_path(link)?;
+    crate::core::file_watcher::mute_self_writes(link);
+    crate::core::file_watcher::mute_self_writes(&staged);
+    if let Some(parent) = link.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create parent dir {:?}", parent))?;
+    }
+    // A link staged by an interrupted earlier call is ours to clear.
+    if std::fs::symlink_metadata(&staged).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        remove_link(&staged)?;
+    }
+    create_dir_link(&relative, &staged)
+        .with_context(|| format!("Failed to create link {:?} -> {:?}", link, relative))?;
+    let swapped = remove_classified_target(link, state)
+        .with_context(|| format!("Failed to remove existing target {:?}", link))
+        .and_then(|()| {
+            std::fs::rename(&staged, link)
+                .with_context(|| format!("Failed to move the new link into place at {:?}", link))
+        });
+    if swapped.is_err() {
+        let _ = remove_link(&staged);
+    }
+    swapped
+}
+
+/// `.<name>.link-tmp` beside `link`: in the same directory, so the relative
+/// target reads the same from both.
+fn staged_link_path(link: &Path) -> Result<PathBuf> {
+    let name = link
+        .file_name()
+        .with_context(|| format!("{:?} has no file name", link))?;
+    let mut staged = OsString::from(".");
+    staged.push(name);
+    staged.push(".link-tmp");
+    Ok(link.with_file_name(staged))
+}
+
+fn create_dir_link(target: &Path, link: &Path) -> Result<()> {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link)?;
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_dir(target, link).context(
+        "Windows creates symbolic links only with Developer Mode or the symlink privilege",
+    )?;
+    #[cfg(not(any(unix, windows)))]
+    anyhow::bail!("Symbolic links are not supported on this platform");
     Ok(())
 }
 
@@ -1363,5 +1472,177 @@ mod tests {
         ));
         // Both missing → must resync.
         assert!(!is_target_current(&src, &tgt, SyncMode::Copy, None, None));
+    }
+
+    // ── relative links ──
+
+    #[test]
+    fn relative_link_target_climbs_one_level_per_directory() {
+        let root = Path::new("/project");
+        let vendored = root.join(".agents/skills/x");
+
+        let target = |link: &str| relative_link_target(&root.join(link), &vendored, root).unwrap();
+
+        assert_eq!(
+            target(".claude/skills/x"),
+            Path::new("../../.agents/skills/x")
+        );
+        assert_eq!(
+            target(".codeium/windsurf/skills/x"),
+            Path::new("../../../.agents/skills/x")
+        );
+        assert_eq!(
+            target("./.cursor/./skills/x"),
+            Path::new("../../.agents/skills/x")
+        );
+        assert_eq!(
+            relative_link_target(
+                &root.join(".claude/skills/team/x"),
+                &root.join(".agents/skills/team/x"),
+                root
+            )
+            .unwrap(),
+            Path::new("../../../.agents/skills/team/x")
+        );
+    }
+
+    #[test]
+    fn relative_link_target_rejects_paths_it_cannot_express() {
+        let root = Path::new("/project");
+        let vendored = root.join(".agents/skills/x");
+
+        for link in [
+            Path::new("/elsewhere/.claude/skills/x").to_path_buf(),
+            root.join(".claude/../skills/x"),
+            root.to_path_buf(),
+            vendored.clone(),
+            vendored.join("inner"),
+        ] {
+            assert!(
+                relative_link_target(&link, &vendored, root).is_err(),
+                "{link:?}"
+            );
+        }
+        assert!(relative_link_target(
+            &root.join(".claude/skills/x"),
+            Path::new("/elsewhere/x"),
+            root
+        )
+        .is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn link_skill_relative_links_relatively_and_is_idempotent() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let vendored = root.join(".agents/skills/x");
+        fs::create_dir_all(&vendored).unwrap();
+        fs::write(vendored.join("SKILL.md"), "# x").unwrap();
+        let link = root.join(".claude/skills/x");
+
+        link_skill_relative(&link, &vendored, root, ReplacePolicy::NoClobber).unwrap();
+        link_skill_relative(&link, &vendored, root, ReplacePolicy::NoClobber).unwrap();
+
+        assert_eq!(
+            fs::read_link(&link).unwrap(),
+            Path::new("../../.agents/skills/x")
+        );
+        assert_eq!(fs::read_to_string(link.join("SKILL.md")).unwrap(), "# x");
+
+        // An absolute link to the same directory would break in a clone.
+        fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(&vendored, &link).unwrap();
+        link_skill_relative(&link, &vendored, root, ReplacePolicy::NoClobber).unwrap();
+        assert!(fs::read_link(&link).unwrap().is_relative());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn link_skill_relative_refuses_what_is_not_its_to_replace() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let vendored = root.join(".agents/skills/x");
+        let other = root.join("other");
+        fs::create_dir_all(&vendored).unwrap();
+        fs::create_dir_all(&other).unwrap();
+
+        let real = root.join(".claude/skills/x");
+        fs::create_dir_all(&real).unwrap();
+        fs::write(real.join("SKILL.md"), "mine").unwrap();
+        let foreign = root.join(".cursor/skills/x");
+        fs::create_dir_all(foreign.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&other, &foreign).unwrap();
+
+        for link in [&real, &foreign] {
+            let err =
+                link_skill_relative(link, &vendored, root, ReplacePolicy::NoClobber).unwrap_err();
+            assert!(err.to_string().contains("Refusing to replace"), "{err}");
+        }
+        assert_eq!(fs::read_to_string(real.join("SKILL.md")).unwrap(), "mine");
+        assert_eq!(fs::read_link(&foreign).unwrap(), other);
+    }
+
+    /// The new link is made beside the old one first: when it cannot be
+    /// made, the old link still works.
+    #[cfg(unix)]
+    #[test]
+    fn link_skill_relative_keeps_the_old_link_when_the_new_one_cannot_be_made() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let vendored = root.join(".agents/skills/x");
+        fs::create_dir_all(&vendored).unwrap();
+        fs::write(vendored.join("SKILL.md"), "# x").unwrap();
+        let link = root.join(".claude/skills/x");
+        fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&vendored, &link).unwrap();
+        let staged = root.join(".claude/skills/.x.link-tmp");
+        fs::create_dir(&staged).unwrap();
+
+        assert!(link_skill_relative(&link, &vendored, root, ReplacePolicy::NoClobber).is_err());
+        assert_eq!(fs::read_link(&link).unwrap(), vendored);
+        assert!(staged.is_dir());
+
+        // A link an interrupted call left staged is cleared, not in the way.
+        fs::remove_dir(&staged).unwrap();
+        std::os::unix::fs::symlink("elsewhere", &staged).unwrap();
+        link_skill_relative(&link, &vendored, root, ReplacePolicy::NoClobber).unwrap();
+        assert_eq!(
+            fs::read_link(&link).unwrap(),
+            Path::new("../../.agents/skills/x")
+        );
+        assert!(fs::symlink_metadata(&staged).is_err());
+    }
+
+    /// Windows makes a relative symlink or nothing: never a junction (which
+    /// stores an absolute path) and never a copy. A junction already there
+    /// keeps working when the symlink cannot be made.
+    #[cfg(windows)]
+    #[test]
+    fn link_skill_relative_on_windows_is_a_relative_symlink_or_a_clean_error() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let vendored = root.join(".agents").join("skills").join("x");
+        fs::create_dir_all(&vendored).unwrap();
+        fs::write(vendored.join("SKILL.md"), "# x").unwrap();
+        let link = root.join(".claude").join("skills").join("x");
+        let junctioned = root.join(".cursor").join("skills").join("x");
+        fs::create_dir_all(junctioned.parent().unwrap()).unwrap();
+        junction::create(&vendored, &junctioned).unwrap();
+
+        match link_skill_relative(&link, &vendored, root, ReplacePolicy::NoClobber) {
+            Ok(()) => {
+                assert_eq!(
+                    fs::read_link(&link).unwrap(),
+                    Path::new("..\\..\\.agents\\skills\\x")
+                );
+                assert!(link.join("SKILL.md").is_file());
+            }
+            Err(_) => assert!(fs::symlink_metadata(&link).is_err()),
+        }
+        match link_skill_relative(&junctioned, &vendored, root, ReplacePolicy::NoClobber) {
+            Ok(()) => assert!(fs::read_link(&junctioned).unwrap().is_relative()),
+            Err(_) => assert!(junctioned.join("SKILL.md").is_file()),
+        }
     }
 }

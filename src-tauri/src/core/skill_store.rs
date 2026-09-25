@@ -101,6 +101,9 @@ pub struct ProjectRecord {
     /// Agent group keys this project deploys to. `None` is a project that
     /// never chose, which keeps using every installed and enabled agent.
     pub agent_keys: Option<Vec<String>>,
+    /// `"link"` links agents to the library; `"copy"` vendors skills into
+    /// the project's `.agents/skills`.
+    pub deploy_mode: String,
 }
 
 /// A machine with Skills Manager reachable over SSH. Authentication is the
@@ -1165,9 +1168,9 @@ impl SkillStore {
         conn.execute(
             "INSERT INTO projects (
                 id, name, path, workspace_type, linked_agent_key, linked_agent_name, disabled_path,
-                sort_order, created_at, updated_at, agent_keys
+                sort_order, created_at, updated_at, agent_keys, deploy_mode
              )
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 project.id,
                 project.name,
@@ -1180,6 +1183,7 @@ impl SkillStore {
                 project.created_at,
                 project.updated_at,
                 agent_keys_to_json(project.agent_keys.as_deref())?,
+                project.deploy_mode,
             ],
         )?;
         Ok(())
@@ -1189,7 +1193,7 @@ impl SkillStore {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, name, path, workspace_type, linked_agent_key, linked_agent_name, disabled_path,
-                    sort_order, created_at, updated_at, agent_keys
+                    sort_order, created_at, updated_at, agent_keys, deploy_mode
              FROM projects
              ORDER BY sort_order, created_at",
         )?;
@@ -1201,7 +1205,7 @@ impl SkillStore {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, name, path, workspace_type, linked_agent_key, linked_agent_name, disabled_path,
-                    sort_order, created_at, updated_at, agent_keys
+                    sort_order, created_at, updated_at, agent_keys, deploy_mode
              FROM projects
              WHERE id = ?1",
         )?;
@@ -1223,6 +1227,15 @@ impl SkillStore {
         conn.execute(
             "UPDATE projects SET agent_keys = ?2, updated_at = ?3 WHERE id = ?1",
             params![id, json, chrono::Utc::now().timestamp_millis()],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_project_deploy_mode(&self, id: &str, deploy_mode: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE projects SET deploy_mode = ?2, updated_at = ?3 WHERE id = ?1",
+            params![id, deploy_mode, chrono::Utc::now().timestamp_millis()],
         )?;
         Ok(())
     }
@@ -1652,6 +1665,7 @@ fn map_project_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRecord> {
         agent_keys: row
             .get::<_, Option<String>>(10)?
             .and_then(|json| serde_json::from_str(&json).ok()),
+        deploy_mode: row.get(11)?,
     })
 }
 
@@ -1786,6 +1800,7 @@ mod project_agent_tests {
             created_at: 0,
             updated_at: 0,
             agent_keys: None,
+            deploy_mode: "link".to_string(),
         }
     }
 
@@ -1817,6 +1832,25 @@ mod project_agent_tests {
             store.get_project_by_id("p1").unwrap().unwrap().agent_keys,
             None
         );
+    }
+
+    #[test]
+    fn project_deploy_mode_round_trips() {
+        let tmp = tempdir().unwrap();
+        let store = SkillStore::new(&tmp.path().join("test.db")).unwrap();
+        store
+            .insert_project(&ProjectRecord {
+                deploy_mode: "copy".to_string(),
+                ..project("p1")
+            })
+            .unwrap();
+        assert_eq!(
+            store.get_project_by_id("p1").unwrap().unwrap().deploy_mode,
+            "copy"
+        );
+
+        store.set_project_deploy_mode("p1", "link").unwrap();
+        assert_eq!(store.get_all_projects().unwrap()[0].deploy_mode, "link");
     }
 
     #[test]
