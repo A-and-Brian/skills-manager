@@ -935,7 +935,34 @@
     "batchEditTags": "標籤 ({{count}})",
     "batchTagsUpdated": "已更新 {{count}} 個中心 Skill 的標籤",
     "batchTagsFailed": "{{count}} 個中心 Skill 標籤更新失敗",
-    "batchTagScopeNote": "標籤儲存在中央技能庫，改動會影響所有使用這個 Skill 的專案。只屬於本專案的本機 Skill 不會被修改。"
+    "batchTagScopeNote": "標籤儲存在中央技能庫，改動會影響所有使用這個 Skill 的專案。只屬於本專案的本機 Skill 不會被修改。",
+    "agentsButton": "Agent",
+    "agentsButtonHint": "選擇此專案使用的 Agent",
+    "agentsOverridden": "此 Skill 的 Agent 是手動選擇的，專案層級的 Agent 變更會略過它。",
+    "useProjectAgents": "使用專案 Agent",
+    "useProjectAgentsDone": "「{{name}}」已改用專案的 Agent",
+    "agentsDialog": {
+      "title": "專案 Agent",
+      "reviewTitle": "檢查 Agent 變更",
+      "description": "新加入的 Skill 會部署到這些 Agent。修改後，專案中已有的 Skill 也會隨之更新。",
+      "sharedFolderHint": "列在一起的 Agent 共用同一個資料夾，因此會一起加入和移除。",
+      "review": "檢查變更",
+      "apply": "套用",
+      "back": "返回",
+      "noChanges": "沒有需要變更的 Skill。",
+      "overridden": "{{count}} 個 Skill 保留各自的 Agent 選擇。",
+      "skippedAgent": "{{agent}}：{{reason}}",
+      "skipReason": {
+        "overridden": "保留自己的 Agent",
+        "not_in_library": "不在技能庫中，無法加入",
+        "real_directory": "是實體資料夾而非連結，予以保留",
+        "unavailable_agent": "未安裝或已停用",
+        "shared_dir": "共用資料夾，予以保留"
+      },
+      "applied": "Agent 已更新：加入 {{added}} 個，移除 {{removed}} 個",
+      "failed": "{{count}} 項變更失敗",
+      "saved": "專案 Agent 已儲存"
+    }
   },
   "presetActions": {
     "button": "套用 Preset",

@@ -9,13 +9,16 @@ export function enabledInstalledAgentKeys(targets: ProjectAgentTarget[]): string
   return targets.filter((target) => target.installed && target.enabled).map((target) => target.key);
 }
 
+// The project's selected agents that can receive skills right now. A project
+// that never chose has every available agent selected, so for it this is
+// every installed and enabled agent, as it always was.
 export function getDefaultExportAgents(targets: ProjectAgentTarget[]): string[] {
-  const enabledKeys = enabledInstalledAgentKeys(targets);
+  const enabledKeys = enabledInstalledAgentKeys(targets.filter((target) => target.selected));
   const availableKeys = new Set(enabledKeys);
-  // Priority agents first, then every other enabled agent in its detected
-  // order. All enabled agents are included: preset export must reach each
-  // one the user has installed and enabled (issue #400 — non-priority
-  // agents like "pi" were silently dropped when any priority agent was on).
+  // Priority agents first, then every other selected agent in its detected
+  // order. None are dropped: preset export must reach each one the project
+  // uses (issue #400 — non-priority agents like "pi" were silently dropped
+  // when any priority agent was on).
   const prioritized = PROJECT_EXPORT_AGENT_PRIORITY.filter((key) => availableKeys.has(key));
   const rest = enabledKeys.filter((key) => !prioritized.includes(key));
   return Array.from(new Set([...prioritized, ...rest]));

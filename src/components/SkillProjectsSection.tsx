@@ -223,7 +223,13 @@ export function SkillProjectsSection({ skill, projects, onChanged }: Props) {
       <div className="grid grid-cols-1 gap-1.5 px-3 py-3 md:grid-cols-2">
         {visibleProjects.map((project) => {
           const row = rows[project.id];
-          const activeTargets = row?.targets.filter((target) => target.installed && target.enabled) ?? [];
+          // Offer the project's own agents, plus any the skill is already on
+          // so it can still be taken off them.
+          const activeTargets = row?.targets.filter((target) => (
+            target.installed &&
+            target.enabled &&
+            (target.selected || row.installedAgents.includes(target.key))
+          )) ?? [];
           return (
             <div
               key={project.id}

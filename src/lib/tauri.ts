@@ -151,6 +151,8 @@ export interface Project {
   sync_health: SyncHealth;
   created_at: number;
   updated_at: number;
+  /** Agents the project deploys to; null means it never chose and uses every available agent. */
+  agent_keys: string[] | null;
 }
 
 export interface ProjectAgentTarget {
@@ -159,6 +161,45 @@ export interface ProjectAgentTarget {
   enabled: boolean;
   installed: boolean;
   is_custom: boolean;
+  /** Part of the project's agent selection. */
+  selected: boolean;
+  /** Project-relative skills folder, shared by every agent in the group. */
+  relative_skills_dir: string;
+}
+
+export type AgentSkipReason =
+  | "overridden"
+  | "not_in_library"
+  | "real_directory"
+  | "unavailable_agent"
+  | "shared_dir";
+
+export interface SkippedAgent {
+  agent: string;
+  reason: AgentSkipReason;
+}
+
+export interface SkillAgentChange {
+  relative_path: string;
+  name: string;
+  adds: string[];
+  removes: string[];
+  skipped: SkippedAgent[];
+}
+
+export interface AgentChangePlan {
+  skills: SkillAgentChange[];
+  /** Skills whose agents were chosen by hand and are left as they are. */
+  overridden: number;
+}
+
+export interface SkillAgentOutcome {
+  relative_path: string;
+  name: string;
+  added: string[];
+  removed: string[];
+  skipped: SkippedAgent[];
+  failed: { agent: string; error: string }[];
 }
 
 export interface ProjectSkill {
@@ -175,6 +216,8 @@ export interface ProjectSkill {
   in_center: boolean;
   sync_status: "project_only" | "in_sync" | "project_newer" | "center_newer" | "diverged";
   center_skill_id: string | null;
+  /** The skill's agents were chosen by hand, so bulk agent changes skip it. */
+  agents_overridden: boolean;
 }
 
 export interface ProjectSkillDocument {
@@ -818,6 +861,21 @@ export const toggleProjectSkill = (projectId: string, skillRelativePath: string,
 
 export const deleteProjectSkill = (projectId: string, skillRelativePath: string, agent: string) =>
   invoke<void>("delete_project_skill", { projectId, skillRelativePath, agent });
+
+export const setProjectAgentKeys = (projectId: string, agentKeys: string[] | null) =>
+  invoke<void>("set_project_agent_keys", { projectId, agentKeys });
+
+export const previewProjectAgentChange = (projectId: string, agentKeys: string[]) =>
+  invoke<AgentChangePlan>("preview_project_agent_change", { projectId, agentKeys });
+
+export const applyProjectAgentChange = (projectId: string, agentKeys: string[]) =>
+  invoke<SkillAgentOutcome[]>("apply_project_agent_change", { projectId, agentKeys });
+
+export const setProjectSkillAgents = (projectId: string, skillRelativePath: string, agentKeys: string[]) =>
+  invoke<SkillAgentOutcome>("set_project_skill_agents", { projectId, skillRelativePath, agentKeys });
+
+export const clearProjectSkillAgents = (projectId: string, skillRelativePath: string) =>
+  invoke<SkillAgentOutcome>("clear_project_skill_agents", { projectId, skillRelativePath });
 
 export const slugifySkillNames = (names: string[]) =>
   invoke<string[]>("slugify_skill_names", { names });

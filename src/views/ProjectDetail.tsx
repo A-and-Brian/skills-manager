@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Circle,
   Tag,
+  Bot,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -43,6 +44,7 @@ import * as api from "../lib/tauri";
 import type { ProjectSkill, ManagedSkill, ProjectAgentTarget } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
 import { AddSkillsSheet } from "../components/AddSkillsSheet";
+import { ProjectAgentsDialog } from "../components/ProjectAgentsDialog";
 const projectLastUsedAgentsKey = (projectId: string) =>
   `project_last_used_export_agents:${projectId}`;
 
@@ -60,6 +62,7 @@ interface ProjectSkillGroup {
   status: ProjectSkill["sync_status"];
   tags: string[];
   centerSkillIds: string[];
+  agentsOverridden: boolean;
 }
 
 function getSyncStatusMeta(t: (key: string) => string, status: ProjectSkill["sync_status"]) {
@@ -148,6 +151,7 @@ export function ProjectDetail() {
   const [togglingSkill, setTogglingSkill] = useState<string | null>(null);
   const [togglingAgentTarget, setTogglingAgentTarget] = useState<{ skillKey: string; agent: string } | null>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showAgentsDialog, setShowAgentsDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProjectSkillGroup | null>(null);
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
   const [batchTagDialogOpen, setBatchTagDialogOpen] = useState(false);
@@ -170,6 +174,8 @@ export function ProjectDetail() {
   };
 
   const project = projects.find((p) => p.id === id);
+  // Targets carry the selection, so they reload when it changes.
+  const agentKeysSignal = JSON.stringify(project?.agent_keys ?? null);
   const getSkillKey = useCallback((skill: Pick<ProjectSkillGroup, "id">) => {
     return skill.id;
   }, []);
@@ -223,7 +229,7 @@ export function ProjectDetail() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, agentKeysSignal]);
 
   useEffect(() => {
     if (!project && !loading) {
@@ -242,6 +248,7 @@ export function ProjectDetail() {
         existing.totalCount += 1;
         existing.files = Array.from(new Set([...existing.files, ...skill.files])).sort();
         existing.tags = Array.from(new Set([...existing.tags, ...skill.tags])).sort((a, b) => a.localeCompare(b));
+        existing.agentsOverridden ||= skill.agents_overridden;
         if (skill.center_skill_id && !existing.centerSkillIds.includes(skill.center_skill_id)) {
           existing.centerSkillIds.push(skill.center_skill_id);
           existing.centerSkillIds.sort((a, b) => a.localeCompare(b));
@@ -265,6 +272,7 @@ export function ProjectDetail() {
         status: skill.sync_status,
         tags: [...skill.tags].sort((a, b) => a.localeCompare(b)),
         centerSkillIds: skill.center_skill_id ? [skill.center_skill_id] : [],
+        agentsOverridden: skill.agents_overridden,
       });
     }
     return Array.from(groups.values())
@@ -328,7 +336,15 @@ export function ProjectDetail() {
 
   const exportTargets = useMemo(() => {
     if (projectAgentTargets.length > 0) return projectAgentTargets;
-    return [{ key: "claude_code", display_name: "Claude Code", enabled: true, installed: true, is_custom: false }];
+    return [{
+      key: "claude_code",
+      display_name: "Claude Code",
+      enabled: true,
+      installed: true,
+      is_custom: false,
+      selected: true,
+      relative_skills_dir: ".claude/skills",
+    }];
   }, [projectAgentTargets]);
 
   const projectSkillDirNamesByAgent = useMemo(() => {
@@ -411,14 +427,17 @@ export function ProjectDetail() {
     [id],
   );
 
+  // A project that chose its agents always starts from them; the last-used
+  // heuristic only stands in for projects that never chose.
+  const hasAgentSelection = Boolean(project?.agent_keys);
   const initialSheetAgents = useMemo(() => {
     const availableKeys = new Set(enabledInstalledAgentKeys(exportTargets));
-    if (lastUsedExportAgents && lastUsedExportAgents.length > 0) {
+    if (!hasAgentSelection && lastUsedExportAgents && lastUsedExportAgents.length > 0) {
       const filtered = lastUsedExportAgents.filter((k) => availableKeys.has(k));
       if (filtered.length > 0) return filtered;
     }
     return selectedExportAgents.filter((k) => availableKeys.has(k));
-  }, [exportTargets, lastUsedExportAgents, selectedExportAgents]);
+  }, [exportTargets, hasAgentSelection, lastUsedExportAgents, selectedExportAgents]);
 
   const presetBarAgentKeys = useMemo(() => {
     // The real targets load asynchronously; until they arrive `exportTargets`
@@ -646,26 +665,52 @@ export function ProjectDetail() {
     const displayName = target?.display_name ?? agentKey;
     const existingVariant = skill.variants.find((variant) => variant.agent === agentKey);
 
+    const centerSkillId = skill.centerSkillIds[0];
+    if (enabled && !centerSkillId) {
+      toast.error(t("project.agentAddRequiresCenter", { agent: displayName }));
+      return;
+    }
+    if (!enabled && !existingVariant) return;
+
     setTogglingAgentTarget({ skillKey: getSkillKey(skill), agent: agentKey });
     try {
-      if (enabled) {
-        const centerSkillId = skill.centerSkillIds[0];
-        if (!centerSkillId) {
-          toast.error(t("project.agentAddRequiresCenter", { agent: displayName }));
-          return;
-        }
-        await api.exportSkillToProject(centerSkillId, id, [agentKey]);
-        toast.success(t("project.agentAdded", { agent: displayName, name: skill.name }));
+      if (project?.workspace_type === "linked") {
+        // One agent, nothing to choose between: add or delete the one copy.
+        if (enabled) await api.exportSkillToProject(centerSkillId, id, [agentKey]);
+        else if (existingVariant) await api.deleteProjectSkill(id, existingVariant.relative_path, agentKey);
       } else {
-        if (!existingVariant) return;
-        await api.deleteProjectSkill(id, existingVariant.relative_path, agentKey);
-        toast.success(t("project.agentRemoved", { agent: displayName, name: skill.name }));
+        // Picking this skill's agents by hand keeps it out of project-wide
+        // agent changes until "use project agents".
+        const assigned = getAssignedAgents(skill.variants);
+        const nextAgents = enabled ? [...assigned, agentKey] : assigned.filter((key) => key !== agentKey);
+        const outcome = await api.setProjectSkillAgents(id, skill.relative_path, nextAgents);
+        if (outcome.failed.length > 0) throw new Error(outcome.failed[0].error);
       }
+      toast.success(
+        enabled
+          ? t("project.agentAdded", { agent: displayName, name: skill.name })
+          : t("project.agentRemoved", { agent: displayName, name: skill.name })
+      );
       await Promise.all([loadSkills(), refreshProjects()]);
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, t("common.error")));
     } finally {
       setTogglingAgentTarget(null);
+    }
+  };
+
+  const handleUseProjectAgents = async (skill: ProjectSkillGroup) => {
+    if (!id) return;
+    try {
+      const outcome = await api.clearProjectSkillAgents(id, skill.relative_path);
+      if (outcome.failed.length > 0) {
+        toast.error(outcome.failed[0].error);
+      } else {
+        toast.success(t("project.useProjectAgentsDone", { name: skill.name }));
+      }
+      await Promise.all([loadSkills(), refreshProjects()]);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, t("common.error")));
     }
   };
 
@@ -986,6 +1031,18 @@ export function ProjectDetail() {
                 {isMultiSelect ? t("project.cancelSelect") : t("project.selectMode")}
               </button>
             </div>
+
+            {project.workspace_type !== "linked" && (
+              <button
+                onClick={() => setShowAgentsDialog(true)}
+                disabled={projectAgentTargets.length === 0}
+                className="app-toolbar-button app-toolbar-button-secondary"
+                title={t("project.agentsButtonHint")}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                {t("project.agentsButton")}
+              </button>
+            )}
 
             <div className="relative shrink-0">
               <button
@@ -1533,6 +1590,7 @@ export function ProjectDetail() {
               : null
           }
           onToggleAgent={(agentKey, enabled) => handleToggleDetailAgent(detailSkill, agentKey, enabled)}
+          onUseProjectAgents={() => handleUseProjectAgents(detailSkill)}
           docContent={docContent}
           docLoading={docLoading}
           centerDocContent={centerDocContent}
@@ -1571,6 +1629,18 @@ export function ProjectDetail() {
       />
 
       {id && (
+        <ProjectAgentsDialog
+          open={showAgentsDialog}
+          projectId={id}
+          targets={projectAgentTargets}
+          onClose={() => setShowAgentsDialog(false)}
+          onApplied={async () => {
+            await Promise.all([loadSkills(), refreshProjects()]);
+          }}
+        />
+      )}
+
+      {id && (
         <AddSkillsSheet
           open={showExportDialog}
           onClose={() => setShowExportDialog(false)}
@@ -1599,6 +1669,7 @@ function ProjectSkillDetailPanel({
   targets,
   togglingAgent,
   onToggleAgent,
+  onUseProjectAgents,
   docContent,
   docLoading,
   centerDocContent,
@@ -1609,6 +1680,7 @@ function ProjectSkillDetailPanel({
   targets: ProjectAgentTarget[];
   togglingAgent: string | null;
   onToggleAgent: (agentKey: string, enabled: boolean) => void;
+  onUseProjectAgents: () => void;
   docContent: string | null;
   docLoading: boolean;
   centerDocContent: string | null;
@@ -1646,6 +1718,8 @@ function ProjectSkillDetailPanel({
             enabled: true,
             installed: true,
             is_custom: false,
+            selected: true,
+            relative_skills_dir: "",
           }))}
         />
         {skill.tags.length > 0 && (
@@ -1685,6 +1759,19 @@ function ProjectSkillDetailPanel({
       meta={meta}
       onClose={onClose}
     >
+      {skill.agentsOverridden && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-bg-secondary px-3 py-2 text-[12px] text-muted">
+          <span>{t("project.agentsOverridden")}</span>
+          <button
+            type="button"
+            onClick={onUseProjectAgents}
+            className="shrink-0 font-medium text-accent-light hover:underline"
+          >
+            {t("project.useProjectAgents")}
+          </button>
+        </div>
+      )}
+
       <AgentToggleSection
         items={toggleItems}
         togglingKey={togglingAgent}
