@@ -65,6 +65,14 @@
 
 Download the `.dmg` for your Mac from the [latest release](https://github.com/A-and-Brian/skills-manager/releases/latest).
 
+Releases aren't notarized by Apple yet, so the first time you open the app macOS says it "is damaged and can't be opened". After dragging it to Applications, run this once:
+
+```bash
+xattr -cr /Applications/skills-manager.app
+```
+
+Updates installed from inside the app don't need this.
+
 ### Windows and Linux
 
 Download the installer for your platform from the [latest release](https://github.com/A-and-Brian/skills-manager/releases/latest): `.exe` or `.msi` for Windows, and `.AppImage`, `.deb`, or `.rpm` for Linux (x64 and arm64).
