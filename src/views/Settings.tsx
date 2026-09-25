@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "@tanstack/react-router";
 import {
   Settings2,
   Loader2,
@@ -25,7 +25,7 @@ import { ACTION_BUTTON_CLASS, GITHUB_URL } from "./settings/shared";
 import {
   SETTINGS_CATEGORIES,
   resolveSettingsCategory,
-  settingsPath,
+  settingsLink,
   type SettingsCategory,
 } from "./settings/categories";
 import { GeneralSection } from "./settings/GeneralSection";
@@ -48,7 +48,7 @@ const CATEGORY_ICONS: Record<SettingsCategory, LucideIcon> = {
 
 export function Settings() {
   const { t, i18n } = useTranslation();
-  const { category: categoryParam } = useParams();
+  const { category: categoryParam } = useParams({ from: "/settings/{-$category}" });
   const { tools, appUpdate } = useApp();
   const [reportingIssue, setReportingIssue] = useState(false);
   const [lastPanic, setLastPanic] = useState<api.PanicInfo | null>(null);
@@ -163,7 +163,7 @@ export function Settings() {
 
   const category = resolveSettingsCategory(categoryParam);
   if (!category) {
-    return <Navigate to={settingsPath()} replace />;
+    return <Navigate {...settingsLink()} replace />;
   }
 
   return (
@@ -232,7 +232,7 @@ export function Settings() {
               return (
                 <li key={slug} className="shrink-0">
                   <Link
-                    to={settingsPath(slug)}
+                    {...settingsLink(slug)}
                     aria-current={isActive ? "page" : undefined}
                     className={cn(
                       "flex items-center gap-2.5 whitespace-nowrap px-2.5 py-[7px] rounded-md text-sm font-medium transition-colors outline-none",

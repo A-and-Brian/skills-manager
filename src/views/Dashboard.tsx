@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { Layers, CheckCircle2, Bot, Plus, Download, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "../context/AppContext";
@@ -101,14 +101,14 @@ export function Dashboard() {
       {/* Actions */}
       <div className="flex gap-3">
         <button
-          onClick={() => navigate("/install?tab=local")}
+          onClick={() => navigate({ to: "/install", search: { tab: "local" } })}
           className="app-button-primary flex-1"
         >
           <Download className="w-4 h-4" />
           {t("dashboard.scanImport")}
         </button>
         <button
-          onClick={() => navigate("/install")}
+          onClick={() => navigate({ to: "/install" })}
           className="app-button-secondary flex-1"
         >
           <Plus className="w-4 h-4 text-tertiary" />
@@ -130,12 +130,12 @@ export function Dashboard() {
                 tabIndex={0}
                 onClick={() => {
                   openSkillDetailById(skill.id);
-                  navigate("/my-skills");
+                  navigate({ to: "/my-skills" });
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     openSkillDetailById(skill.id);
-                    navigate("/my-skills");
+                    navigate({ to: "/my-skills" });
                   }
                 }}
                 className="flex items-center justify-between px-3.5 py-2.5 hover:bg-surface-hover transition-colors cursor-pointer"

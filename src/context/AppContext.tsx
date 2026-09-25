@@ -8,7 +8,8 @@ import { listenOnActiveHost } from "../lib/hostEvents";
 import { getErrorMessage } from "../lib/error";
 import i18n from "../i18n";
 import { applyTextSize } from "../lib/textScale";
-import { settingsPath } from "../views/settings/categories";
+import { useNavigate } from "@tanstack/react-router";
+import { settingsLink } from "../views/settings/categories";
 import { toast } from "sonner";
 
 /** The live link to the active remote host. */
@@ -91,6 +92,7 @@ const AppContext = createContext<AppState | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const SKILL_UPDATE_TOAST_ID = "skill-update-available";
   const APP_UPDATE_TOAST_ID = "app-update-available";
+  const navigate = useNavigate();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [activePreset, setActivePreset] = useState<Preset | null>(null);
   const [viewedPresetId, setViewedPresetIdState] = useState<string | null>(() => readViewedPresetId(null));
@@ -341,10 +343,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // The tray checked this computer's skills.
       void switchHost(null);
       setDetailSkillId(null);
-      if (!window.location.pathname.endsWith("/my-skills")) {
-        window.history.pushState(null, "", "/my-skills");
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      }
+      navigate({ to: "/my-skills" });
     });
 
     return () => {
@@ -354,7 +353,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           console.error("Failed to unlisten tray-open-updates:", error);
         });
     };
-  }, [switchHost]);
+  }, [navigate, switchHost]);
 
   useEffect(() => {
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -426,15 +425,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           label: i18n.t("mySkills.viewUpdates"),
           onClick: () => {
             setDetailSkillId(null);
-            if (!window.location.pathname.endsWith("/my-skills")) {
-              window.history.pushState(null, "", "/my-skills");
-              window.dispatchEvent(new PopStateEvent("popstate"));
-            }
+            navigate({ to: "/my-skills" });
           },
         },
       }
     );
-  }, []);
+  }, [navigate]);
 
   const refreshAppUpdate = useCallback(async () => {
     const info = await api.checkAppUpdate();
@@ -474,13 +470,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               duration: 8000,
               action: {
                 label: i18n.t("settings.viewUpdate"),
-                onClick: () => {
-                  const aboutPath = settingsPath("about");
-                  if (window.location.pathname !== aboutPath) {
-                    window.history.pushState(null, "", aboutPath);
-                    window.dispatchEvent(new PopStateEvent("popstate"));
-                  }
-                },
+                onClick: () => navigate(settingsLink("about")),
               },
             }
           );

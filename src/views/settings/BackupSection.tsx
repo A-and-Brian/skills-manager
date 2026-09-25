@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link as LinkIcon, Unlink, Loader2, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
 import * as api from "../../lib/tauri";
 import { ACTION_BUTTON_CLASS, FIELD_CLASS } from "./shared";
@@ -75,7 +75,7 @@ export function BackupSection() {
             <p className="mt-0.5 text-[12px] text-muted">{t("settings.gitSyncConfigDesc")}</p>
             <button
               type="button"
-              onClick={() => navigate("/backup")}
+              onClick={() => navigate({ to: "/backup" })}
               className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
             >
               <ExternalLink className="w-3 h-3" />

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
   Search,
@@ -98,7 +98,7 @@ export function CommandPalette() {
         sublabel: s.description || undefined,
         icon: <Layers className="h-3.5 w-3.5" />,
         run: () => {
-          navigate("/my-skills");
+          navigate({ to: "/my-skills" });
           openSkillDetailById(s.id);
         },
       }));
@@ -120,7 +120,7 @@ export function CommandPalette() {
               setViewedPresetId(s.id);
             }
             if (!window.location.pathname.endsWith("/my-skills")) {
-              navigate("/my-skills");
+              navigate({ to: "/my-skills" });
             }
           },
         };
@@ -140,7 +140,7 @@ export function CommandPalette() {
         label: p.name,
         sublabel: p.path,
         icon: <Folder className="h-3.5 w-3.5" />,
-        run: () => navigate(`/project/${p.id}`),
+        run: () => navigate({ to: "/project/$id", params: { id: p.id } }),
       }));
 
     const actionDefs: PaletteItem[] = [
@@ -149,28 +149,28 @@ export function CommandPalette() {
         kind: "action",
         label: t("sidebar.dashboard"),
         icon: <Home className="h-3.5 w-3.5" />,
-        run: () => navigate("/"),
+        run: () => navigate({ to: "/" }),
       },
       {
         id: "action:my-skills",
         kind: "action",
         label: t("sidebar.mySkills"),
         icon: <Layers className="h-3.5 w-3.5" />,
-        run: () => navigate("/my-skills"),
+        run: () => navigate({ to: "/my-skills" }),
       },
       {
         id: "action:install",
         kind: "action",
         label: t("sidebar.installSkills"),
         icon: <Download className="h-3.5 w-3.5" />,
-        run: () => navigate("/install"),
+        run: () => navigate({ to: "/install" }),
       },
       {
         id: "action:install-local",
         kind: "action",
         label: t("commandPalette.scanImport"),
         icon: <FolderOpen className="h-3.5 w-3.5" />,
-        run: () => navigate("/install?tab=local"),
+        run: () => navigate({ to: "/install", search: { tab: "local" } }),
       },
       {
         id: "action:settings",
@@ -178,7 +178,7 @@ export function CommandPalette() {
         label: t("sidebar.settings"),
         icon: <SettingsIcon className="h-3.5 w-3.5" />,
         shortcut: "⌘,",
-        run: () => navigate("/settings"),
+        run: () => navigate({ to: "/settings/{-$category}" }),
       },
     ];
     const actions = actionDefs.filter((a) => !q || a.label.toLowerCase().includes(q));

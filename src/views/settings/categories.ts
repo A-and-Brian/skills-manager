@@ -17,8 +17,9 @@ export function resolveSettingsCategory(param: string | undefined): SettingsCate
   return SETTINGS_CATEGORIES.find((category) => category === param) ?? null;
 }
 
-export function settingsPath(category: SettingsCategory = DEFAULT_SETTINGS_CATEGORY) {
-  return `/settings/${category}`;
+/** Link options for a settings category, for `<Link>` and `navigate()`. */
+export function settingsLink(category: SettingsCategory = DEFAULT_SETTINGS_CATEGORY) {
+  return { to: "/settings/{-$category}", params: { category } } as const;
 }
 
 export function isSettingsPath(pathname: string) {

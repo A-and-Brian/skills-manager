@@ -27,7 +27,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { pickPath } from "../lib/pickPath";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { cn } from "../utils";
@@ -1355,7 +1355,7 @@ export function MySkills() {
               return (
                 <button
                   type="button"
-                  onClick={() => navigate("/backup")}
+                  onClick={() => navigate({ to: "/backup" })}
                   className={cn(
                     "inline-flex items-center gap-1 rounded-md px-3 py-2 text-[13px] font-medium transition-colors hover:bg-surface-hover hover:text-secondary",
                     meta.className
@@ -1676,7 +1676,7 @@ export function MySkills() {
                           <div className="mt-2 flex flex-wrap items-center gap-1.5">
                             {conflictIds.has(skill.id) && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); navigate("/backup"); }}
+                                onClick={(e) => { e.stopPropagation(); navigate({ to: "/backup" }); }}
                                 className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[13px] font-medium text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-400"
                                 title={t("mySkills.needsAttentionHint")}
                               >
@@ -1898,7 +1898,7 @@ export function MySkills() {
                     <div className="flex shrink-0 items-center gap-2.5">
                       {conflictIds.has(skill.id) && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); navigate("/backup"); }}
+                          onClick={(e) => { e.stopPropagation(); navigate({ to: "/backup" }); }}
                           className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[12px] font-medium text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-400"
                           title={t("mySkills.needsAttentionHint")}
                         >

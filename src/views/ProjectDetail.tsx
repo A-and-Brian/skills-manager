@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "@tanstack/react-router";
 import {
   FolderOpen,
   Search,
@@ -98,7 +98,7 @@ function getAgentDotTargets(variants: ProjectSkill[]) {
 }
 
 export function ProjectDetail() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams({ from: "/project/$id" });
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { projects, presets, managedSkills, refreshManagedSkills, refreshPresets, refreshProjects } = useApp();
@@ -203,7 +203,7 @@ export function ProjectDetail() {
 
   useEffect(() => {
     if (!project && !loading) {
-      navigate("/");
+      navigate({ to: "/" });
     }
   }, [project, loading, navigate]);
 

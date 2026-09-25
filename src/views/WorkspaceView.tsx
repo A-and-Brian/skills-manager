@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useParams, useNavigate, Navigate } from "react-router-dom";
+import { useParams, useNavigate, Navigate } from "@tanstack/react-router";
 import {
   ChevronRight,
   Download,
@@ -37,7 +37,7 @@ import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER }
 import { AddSkillsSheet } from "../components/AddSkillsSheet";
 import { useMultiSelect } from "../hooks/useMultiSelect";
 import { MultiSelectToolbar } from "../components/MultiSelectToolbar";
-import type { WorkspaceConfig } from "./workspaceConfigs";
+import { CODING_WORKSPACE_CONFIG, LOBSTER_WORKSPACE_CONFIG, type WorkspaceConfig } from "./workspaceConfigs";
 
 function compactHomePath(path: string) {
   return path.replace(/^\/Users\/[^/]+/, "~");
@@ -248,7 +248,7 @@ function getLocalStatusMeta(t: (key: string) => string, status: ProjectSkill["sy
 }
 
 export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
-  const { agentKey } = useParams<{ agentKey?: string }>();
+  const { agentKey } = useParams({ from: config.routePath });
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { tools, managedSkills, presets, refreshManagedSkills, refreshTools } = useApp();
@@ -288,8 +288,8 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
     requestedTool.category !== config.category;
   const redirectTarget = needsRedirect && requestedTool
     ? (requestedTool.category === "lobster"
-        ? `/lobster-workspace/${requestedTool.key}`
-        : `/global-workspace/${requestedTool.key}`)
+        ? LOBSTER_WORKSPACE_CONFIG.routePath
+        : CODING_WORKSPACE_CONFIG.routePath)
     : null;
 
   const installedTools = useMemo(
@@ -827,7 +827,7 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
   };
 
   if (redirectTarget) {
-    return <Navigate to={redirectTarget} replace />;
+    return <Navigate to={redirectTarget} params={{ agentKey }} replace />;
   }
 
   if (installedTools.length === 0) {
@@ -879,7 +879,7 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
             return (
               <button
                 key={tool.key}
-                onClick={() => navigate(`${config.basePath}/${tool.key}`)}
+                onClick={() => navigate({ to: config.routePath, params: { agentKey: tool.key } })}
                 className="app-panel group flex items-center gap-3 p-3.5 text-left transition-all hover:border-border hover:bg-surface-hover"
               >
                 <AgentIcon
