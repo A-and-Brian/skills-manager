@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
 use std::time::Instant;
 use tauri::State;
 
 use crate::core::{
     error::AppError,
+    host::HostCtx,
     scenario_service::{self, BatchApplyMode},
     skill_store::{ScenarioRecord, SkillStore},
     sync_metadata,
@@ -58,42 +58,44 @@ fn preset_dto(store: &SkillStore, scenario: ScenarioRecord) -> PresetDto {
 }
 
 #[tauri::command]
-pub async fn get_presets(store: State<'_, Arc<SkillStore>>) -> Result<Vec<PresetDto>, AppError> {
-    let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let start = Instant::now();
-        let scenarios = store.get_all_scenarios().map_err(AppError::db)?;
-        let count = scenarios.len();
-        let mut result = Vec::new();
-        for s in scenarios {
-            result.push(preset_dto(&store, s));
-        }
-        let elapsed_ms = start.elapsed().as_millis();
-        if should_log_first_or_slow(&GET_PRESETS_FIRST_CALL, elapsed_ms, 100) {
-            log::info!("get_presets: {count} presets in {elapsed_ms} ms");
-        }
-        Ok(result)
-    })
-    .await?
+pub async fn get_presets(ctx: State<'_, HostCtx>) -> Result<Vec<PresetDto>, AppError> {
+    let ctx = ctx.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || get_presets_core(&ctx)).await?
+}
+
+pub fn get_presets_core(ctx: &HostCtx) -> Result<Vec<PresetDto>, AppError> {
+    let store = ctx.store.clone();
+    let start = Instant::now();
+    let scenarios = store.get_all_scenarios().map_err(AppError::db)?;
+    let count = scenarios.len();
+    let mut result = Vec::new();
+    for s in scenarios {
+        result.push(preset_dto(&store, s));
+    }
+    let elapsed_ms = start.elapsed().as_millis();
+    if should_log_first_or_slow(&GET_PRESETS_FIRST_CALL, elapsed_ms, 100) {
+        log::info!("get_presets: {count} presets in {elapsed_ms} ms");
+    }
+    Ok(result)
 }
 
 #[tauri::command]
-pub async fn get_active_preset(
-    store: State<'_, Arc<SkillStore>>,
-) -> Result<Option<PresetDto>, AppError> {
-    let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let active_id = store.get_active_scenario_id().map_err(AppError::db)?;
+pub async fn get_active_preset(ctx: State<'_, HostCtx>) -> Result<Option<PresetDto>, AppError> {
+    let ctx = ctx.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || get_active_preset_core(&ctx)).await?
+}
 
-        if let Some(id) = active_id {
-            let scenarios = store.get_all_scenarios().map_err(AppError::db)?;
-            if let Some(s) = scenarios.into_iter().find(|s| s.id == id) {
-                return Ok(Some(preset_dto(&store, s)));
-            }
+pub fn get_active_preset_core(ctx: &HostCtx) -> Result<Option<PresetDto>, AppError> {
+    let store = ctx.store.clone();
+    let active_id = store.get_active_scenario_id().map_err(AppError::db)?;
+
+    if let Some(id) = active_id {
+        let scenarios = store.get_all_scenarios().map_err(AppError::db)?;
+        if let Some(s) = scenarios.into_iter().find(|s| s.id == id) {
+            return Ok(Some(preset_dto(&store, s)));
         }
-        Ok(None)
-    })
-    .await?
+    }
+    Ok(None)
 }
 
 #[tauri::command]
@@ -102,18 +104,28 @@ pub async fn create_preset(
     name: String,
     description: Option<String>,
     icon: Option<String>,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<PresetDto, AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        create_and_activate_preset_internal(&store, &name, description.as_deref(), icon.as_deref())
-            .map(|scenario| preset_dto(&store, scenario))
+        create_preset_core(&ctx, name, description, icon)
     })
     .await?;
     if result.is_ok() {
         refresh_tray_menu_best_effort(&app);
     }
     result
+}
+
+pub fn create_preset_core(
+    ctx: &HostCtx,
+    name: String,
+    description: Option<String>,
+    icon: Option<String>,
+) -> Result<PresetDto, AppError> {
+    let store = ctx.store.clone();
+    create_and_activate_preset_internal(&store, &name, description.as_deref(), icon.as_deref())
+        .map(|scenario| preset_dto(&store, scenario))
 }
 
 pub fn create_preset_internal(
@@ -179,17 +191,28 @@ pub async fn update_preset(
     name: String,
     description: Option<String>,
     icon: Option<String>,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        update_preset_internal(&store, &id, &name, description.as_deref(), icon.as_deref())
+        update_preset_core(&ctx, id, name, description, icon)
     })
     .await?;
     if result.is_ok() {
         refresh_tray_menu_best_effort(&app);
     }
     result
+}
+
+pub fn update_preset_core(
+    ctx: &HostCtx,
+    id: String,
+    name: String,
+    description: Option<String>,
+    icon: Option<String>,
+) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    update_preset_internal(&store, &id, &name, description.as_deref(), icon.as_deref())
 }
 
 pub fn update_preset_internal(
@@ -217,17 +240,19 @@ pub fn update_preset_internal(
 pub async fn delete_preset(
     app: tauri::AppHandle,
     id: String,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        delete_preset_with_active_fallback_internal(&store, &id)
-    })
-    .await?;
+    let ctx = ctx.inner().clone();
+    let result = tauri::async_runtime::spawn_blocking(move || delete_preset_core(&ctx, id)).await?;
     if result.is_ok() {
         refresh_tray_menu_best_effort(&app);
     }
     result
+}
+
+pub fn delete_preset_core(ctx: &HostCtx, id: String) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    delete_preset_with_active_fallback_internal(&store, &id)
 }
 
 pub fn delete_preset_internal(store: &SkillStore, id: &str) -> Result<(), AppError> {
@@ -293,9 +318,9 @@ fn delete_preset_with_active_fallback_internal(
 pub async fn apply_preset_to_default(
     app: tauri::AppHandle,
     id: String,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    apply_preset_to_default_impl(app, id, store.inner().clone()).await
+    apply_preset_to_default_impl(app, id, ctx.inner().clone()).await
 }
 
 /// Legacy command kept for the CLI and backward compatibility. New callers
@@ -305,20 +330,19 @@ pub async fn apply_preset_to_default(
 pub async fn switch_preset(
     app: tauri::AppHandle,
     id: String,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    apply_preset_to_default_impl(app, id, store.inner().clone()).await
+    apply_preset_to_default_impl(app, id, ctx.inner().clone()).await
 }
 
 async fn apply_preset_to_default_impl(
     app: tauri::AppHandle,
     id: String,
-    store: Arc<SkillStore>,
+    ctx: HostCtx,
 ) -> Result<(), AppError> {
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        scenario_service::apply_scenario_to_default(&store, &id)
-    })
-    .await?;
+    let result =
+        tauri::async_runtime::spawn_blocking(move || apply_preset_to_default_core(&ctx, id))
+            .await?;
     // Refresh even on failure. `apply_scenario_to_default` commits the active
     // preset before syncing, and syncing now reports ownership refusals as an
     // error (#363) — so an error here still means the preset switched and most
@@ -326,7 +350,14 @@ async fn apply_preset_to_default_impl(
     // showing the old preset while the app is on the new one. Failures that
     // happen before the switch make this a harmless no-op refresh.
     refresh_tray_menu_best_effort(&app);
-    result.and_then(scenario_service::refusals_to_error)
+    result
+}
+
+/// Shared by `apply_preset_to_default` and the legacy `switch_preset`.
+pub fn apply_preset_to_default_core(ctx: &HostCtx, id: String) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    scenario_service::apply_scenario_to_default(&store, &id)
+        .and_then(scenario_service::refusals_to_error)
 }
 
 #[tauri::command]
@@ -334,17 +365,11 @@ pub async fn add_skill_to_preset(
     app: tauri::AppHandle,
     skill_id: String,
     preset_id: String,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        set_preset_skills_internal(&store, &preset_id, &[skill_id], true)?;
-        // Membership-only edit. We intentionally do NOT sync to disk here,
-        // even when this preset happens to be the legacy `active_scenario_id`,
-        // because in the post-v1.16 model presets are curation labels, not
-        // implicit deployment switches. Users apply presets explicitly via
-        // PresetBar / the tray, which is where the actual write happens.
-        Ok(())
+        add_skill_to_preset_core(&ctx, skill_id, preset_id)
     })
     .await?;
     if result.is_ok() {
@@ -353,27 +378,51 @@ pub async fn add_skill_to_preset(
     result
 }
 
+pub fn add_skill_to_preset_core(
+    ctx: &HostCtx,
+    skill_id: String,
+    preset_id: String,
+) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    set_preset_skills_internal(&store, &preset_id, &[skill_id], true)?;
+    // Membership-only edit. We intentionally do NOT sync to disk here,
+    // even when this preset happens to be the legacy `active_scenario_id`,
+    // because in the post-v1.16 model presets are curation labels, not
+    // implicit deployment switches. Users apply presets explicitly via
+    // PresetBar / the tray, which is where the actual write happens.
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn remove_skill_from_preset(
     app: tauri::AppHandle,
     skill_id: String,
     preset_id: String,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        set_preset_skills_internal(&store, &preset_id, &[skill_id], false)?;
-        // Same rationale as add_skill_to_preset: editing preset membership
-        // never wipes on-disk skill targets. To remove a skill from a coding
-        // agent the caller goes through PresetBar / the tray (or the explicit
-        // per-skill unsync command).
-        Ok(())
+        remove_skill_from_preset_core(&ctx, skill_id, preset_id)
     })
     .await?;
     if result.is_ok() {
         refresh_tray_menu_best_effort(&app);
     }
     result
+}
+
+pub fn remove_skill_from_preset_core(
+    ctx: &HostCtx,
+    skill_id: String,
+    preset_id: String,
+) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    set_preset_skills_internal(&store, &preset_id, &[skill_id], false)?;
+    // Same rationale as add_skill_to_preset: editing preset membership
+    // never wipes on-disk skill targets. To remove a skill from a coding
+    // agent the caller goes through PresetBar / the tray (or the explicit
+    // per-skill unsync command).
+    Ok(())
 }
 
 /// Add or remove a pre-resolved set of skills from one preset under the repo
@@ -412,52 +461,70 @@ pub fn set_preset_skills_internal(
 pub async fn reorder_presets(
     app: tauri::AppHandle,
     ids: Vec<String>,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        sync_metadata::with_repo_lock("reorder scenarios", || {
-            store.reorder_scenarios(&ids)?;
-            sync_metadata::write_all_from_db_unlocked(&store)
-        })
-        .map_err(AppError::db)
-    })
-    .await?;
+    let ctx = ctx.inner().clone();
+    let result =
+        tauri::async_runtime::spawn_blocking(move || reorder_presets_core(&ctx, ids)).await?;
     if result.is_ok() {
         refresh_tray_menu_best_effort(&app);
     }
     result
 }
 
+pub fn reorder_presets_core(ctx: &HostCtx, ids: Vec<String>) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    sync_metadata::with_repo_lock("reorder scenarios", || {
+        store.reorder_scenarios(&ids)?;
+        sync_metadata::write_all_from_db_unlocked(&store)
+    })
+    .map_err(AppError::db)
+}
+
 #[tauri::command]
 pub async fn get_preset_skill_order(
     preset_id: String,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<Vec<String>, AppError> {
-    let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        store
-            .get_skill_ids_for_scenario(&preset_id)
-            .map_err(AppError::db)
-    })
-    .await?
+    let ctx = ctx.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || get_preset_skill_order_core(&ctx, preset_id))
+        .await?
+}
+
+pub fn get_preset_skill_order_core(
+    ctx: &HostCtx,
+    preset_id: String,
+) -> Result<Vec<String>, AppError> {
+    let store = ctx.store.clone();
+    store
+        .get_skill_ids_for_scenario(&preset_id)
+        .map_err(AppError::db)
 }
 
 #[tauri::command]
 pub async fn reorder_preset_skills(
     preset_id: String,
     skill_ids: Vec<String>,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        sync_metadata::with_repo_lock("reorder scenario skills", || {
-            store.reorder_scenario_skills(&preset_id, &skill_ids)?;
-            sync_metadata::write_all_from_db_unlocked(&store)
-        })
-        .map_err(AppError::db)
+        reorder_preset_skills_core(&ctx, preset_id, skill_ids)
     })
     .await?
+}
+
+pub fn reorder_preset_skills_core(
+    ctx: &HostCtx,
+    preset_id: String,
+    skill_ids: Vec<String>,
+) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    sync_metadata::with_repo_lock("reorder scenario skills", || {
+        store.reorder_scenario_skills(&preset_id, &skill_ids)?;
+        sync_metadata::write_all_from_db_unlocked(&store)
+    })
+    .map_err(AppError::db)
 }
 
 // ── Internal helpers ──
@@ -503,32 +570,41 @@ pub async fn apply_preset_to_coding_agents(
     app: tauri::AppHandle,
     preset_id: String,
     mode: PresetApplyMode,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        scenario_service::ensure_scenario_exists(&store, &preset_id)?;
-        let skill_ids = store
-            .get_skill_ids_for_scenario(&preset_id)
-            .map_err(AppError::db)?;
-        if skill_ids.is_empty() {
-            return Ok(());
-        }
-        let tool_keys: Vec<String> = tool_adapters::enabled_installed_adapters(&store)
-            .into_iter()
-            .filter(|adapter| matches!(adapter.category, tool_adapters::ToolCategory::Coding))
-            .map(|adapter| adapter.key)
-            .collect();
-        if tool_keys.is_empty() {
-            return Ok(());
-        }
-        scenario_service::apply_skills_to_tools(&store, &skill_ids, &tool_keys, mode.into())
+        apply_preset_to_coding_agents_core(&ctx, preset_id, mode)
     })
     .await?;
     if result.is_ok() {
         refresh_tray_menu_best_effort(&app);
     }
     result
+}
+
+pub fn apply_preset_to_coding_agents_core(
+    ctx: &HostCtx,
+    preset_id: String,
+    mode: PresetApplyMode,
+) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    scenario_service::ensure_scenario_exists(&store, &preset_id)?;
+    let skill_ids = store
+        .get_skill_ids_for_scenario(&preset_id)
+        .map_err(AppError::db)?;
+    if skill_ids.is_empty() {
+        return Ok(());
+    }
+    let tool_keys: Vec<String> = tool_adapters::enabled_installed_adapters(&store)
+        .into_iter()
+        .filter(|adapter| matches!(adapter.category, tool_adapters::ToolCategory::Coding))
+        .map(|adapter| adapter.key)
+        .collect();
+    if tool_keys.is_empty() {
+        return Ok(());
+    }
+    scenario_service::apply_skills_to_tools(&store, &skill_ids, &tool_keys, mode.into())
 }
 
 #[cfg(test)]

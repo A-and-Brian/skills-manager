@@ -3,7 +3,10 @@ use std::process::Command;
 use std::sync::Arc;
 use tauri::{Manager, State};
 
-use crate::core::{central_repo, error::AppError, log_sanitize, skill_store::SkillStore, skillssh_api};
+use crate::core::{
+    central_repo, error::AppError, host::HostCtx, log_sanitize, skill_store::SkillStore,
+    skillssh_api,
+};
 
 #[derive(serde::Serialize)]
 pub struct AppUpdateInfo {
@@ -16,11 +19,15 @@ pub struct AppUpdateInfo {
 #[tauri::command]
 pub async fn get_settings(
     key: String,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<Option<String>, AppError> {
-    let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || store.get_setting(&key).map_err(AppError::db))
-        .await?
+    let ctx = ctx.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || get_settings_core(&ctx, key)).await?
+}
+
+pub fn get_settings_core(ctx: &HostCtx, key: String) -> Result<Option<String>, AppError> {
+    let store = ctx.store.clone();
+    store.get_setting(&key).map_err(AppError::db)
 }
 
 /// Diagnostic-only: let the frontend write a named startup event with elapsed
@@ -51,27 +58,13 @@ pub async fn set_settings(
     app: tauri::AppHandle,
     key: String,
     value: String,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     let key_for_store = key.clone();
     let value_for_store = value.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        store
-            .set_setting(&key_for_store, &value_for_store)
-            .map_err(AppError::db)?;
-        if key_for_store == "show_tray_icon" {
-            let tray_enabled = matches!(
-                value_for_store.trim().to_ascii_lowercase().as_str(),
-                "true" | "1" | "yes" | "on"
-            );
-            if !tray_enabled {
-                store
-                    .set_setting("close_action", "close")
-                    .map_err(AppError::db)?;
-            }
-        }
-        Ok::<(), AppError>(())
+        set_settings_core(&ctx, key_for_store, value_for_store)
     })
     .await??;
 
@@ -81,6 +74,24 @@ pub async fn set_settings(
             "true" | "1" | "yes" | "on"
         );
         crate::set_tray_icon_enabled(&app, enabled).map_err(AppError::io)?;
+    }
+    Ok(())
+}
+
+/// The store half of `set_settings`; the tray icon itself is the wrapper's job.
+pub fn set_settings_core(ctx: &HostCtx, key: String, value: String) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    store.set_setting(&key, &value).map_err(AppError::db)?;
+    if key == "show_tray_icon" {
+        let tray_enabled = matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "true" | "1" | "yes" | "on"
+        );
+        if !tray_enabled {
+            store
+                .set_setting("close_action", "close")
+                .map_err(AppError::db)?;
+        }
     }
     Ok(())
 }
@@ -105,12 +116,13 @@ pub fn get_central_repo_warnings() -> Vec<String> {
 
 #[tauri::command]
 pub async fn set_central_repo_path(path: Option<String>) -> Result<String, AppError> {
-    tauri::async_runtime::spawn_blocking(move || {
-        central_repo::set_base_dir_override(path)
-            .map(|resolved| resolved.to_string_lossy().to_string())
-            .map_err(AppError::io)
-    })
-    .await?
+    tauri::async_runtime::spawn_blocking(move || set_central_repo_path_core(path)).await?
+}
+
+pub fn set_central_repo_path_core(path: Option<String>) -> Result<String, AppError> {
+    central_repo::set_base_dir_override(path)
+        .map(|resolved| resolved.to_string_lossy().to_string())
+        .map_err(AppError::io)
 }
 
 #[tauri::command]
