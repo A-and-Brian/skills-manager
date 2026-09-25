@@ -250,6 +250,10 @@ If the fix needs a code change, merge it with a changeset and release the next v
 
 [Open an issue](https://github.com/A-and-Brian/skills-manager/issues), and attach the bundle from **Settings → Export Logs**.
 
+## Support
+
+Skills Manager is free and open source. If it saves you time, you can support this fork through [GitHub Sponsors](https://github.com/sponsors/A-and-Brian) or [buycoffee.to](https://buycoffee.to/yibtam), once a month or as a one-off. Support goes to the work done here since the fork: new features, fixes and releases. It doesn't go to the original project. To support the original author, see [xingkongliang/skills-manager](https://github.com/xingkongliang/skills-manager).
+
 ## Credits
 
 Skills Manager began as a fork of [xingkongliang/skills-manager](https://github.com/xingkongliang/skills-manager). Most of the app — and the history in [CHANGELOG.md](CHANGELOG.md) up to 1.40.0 — is their work.
