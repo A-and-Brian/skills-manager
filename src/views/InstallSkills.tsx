@@ -34,6 +34,15 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { InstallTab } from "./installSearch";
 import { listenOnActiveHost } from "../lib/hostEvents";
 import { pickPath } from "../lib/pickPath";
+import {
+  MARKET_SEARCH_CACHE_TTL_MS,
+  filterMarketSkills,
+  isLoadMoreRequest,
+  marketSearchCacheKey,
+  paginateMarketSkills,
+  pruneMarketSearchCache,
+  type MarketSearchCacheEntry,
+} from "../lib/marketSearch";
 import { findInstalledByGitUrl as findInstalledSkillByGitUrl } from "../lib/gitUrl";
 import { StatusBanner } from "../components/StatusBanner";
 import { getErrorMessage, getErrorKind } from "../lib/error";
@@ -41,8 +50,6 @@ import { getErrorMessage, getErrorKind } from "../lib/error";
 const MARKET_PAGE_SIZE = 24;
 const MARKET_SEARCH_STEP = 60;
 const MARKET_SEARCH_DEBOUNCE_MS = 450;
-const MARKET_SEARCH_CACHE_TTL_MS = 120_000;
-const MARKET_SEARCH_CACHE_MAX_ENTRIES = 150;
 
 export function InstallSkills() {
   const { t } = useTranslation();
@@ -87,7 +94,7 @@ export function InstallSkills() {
   const allBtnMeasureRef = useRef<HTMLButtonElement | null>(null);
   const moreBtnMeasureRef = useRef<HTMLButtonElement | null>(null);
   const sourceMeasureRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const marketSearchCacheRef = useRef<Map<string, { timestamp: number; data: SkillsShSkill[] }>>(new Map());
+  const marketSearchCacheRef = useRef<Map<string, MarketSearchCacheEntry>>(new Map());
   const marketSkillsLengthRef = useRef(0);
   const [debouncedMarketQuery, setDebouncedMarketQuery] = useState("");
   const deferredMarketQuery = useDeferredValue(marketQuery);
@@ -111,29 +118,6 @@ export function InstallSkills() {
     }
     navigate({ to: "/my-skills" });
   }, [navigate, openSkillDetailById]);
-
-  const pruneMarketSearchCache = useCallback(() => {
-    const now = Date.now();
-    const entries = Array.from(marketSearchCacheRef.current.entries());
-
-    for (const [key, value] of entries) {
-      if (now - value.timestamp >= MARKET_SEARCH_CACHE_TTL_MS) {
-        marketSearchCacheRef.current.delete(key);
-      }
-    }
-
-    if (marketSearchCacheRef.current.size <= MARKET_SEARCH_CACHE_MAX_ENTRIES) {
-      return;
-    }
-
-    const sorted = Array.from(marketSearchCacheRef.current.entries()).sort(
-      (a, b) => a[1].timestamp - b[1].timestamp
-    );
-    const removeCount = marketSearchCacheRef.current.size - MARKET_SEARCH_CACHE_MAX_ENTRIES;
-    for (const [key] of sorted.slice(0, removeCount)) {
-      marketSearchCacheRef.current.delete(key);
-    }
-  }, []);
 
   const installedSourceRefs = useMemo(() => {
     const set = new Set<string>();
@@ -225,13 +209,10 @@ export function InstallSkills() {
     if (activeTab !== "market") return;
 
     const query = debouncedMarketQuery.trim();
-    const loadingMore =
-      query.length > 0 &&
-      marketSkillsLengthRef.current > 0 &&
-      marketSearchLimit > marketSkillsLengthRef.current;
+    const loadingMore = isLoadMoreRequest(query, marketSkillsLengthRef.current, marketSearchLimit);
 
     if (query.length > 0 && !loadingMore) {
-      const cacheKey = `${query.toLowerCase()}|${marketSearchLimit}`;
+      const cacheKey = marketSearchCacheKey(query, marketSearchLimit);
       const cached = marketSearchCacheRef.current.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < MARKET_SEARCH_CACHE_TTL_MS) {
         setMarketSkills(cached.data);
@@ -260,9 +241,9 @@ export function InstallSkills() {
         if (stale) return;
         setMarketSkills(result);
         if (query.length > 0 && !loadingMore) {
-          const cacheKey = `${query.toLowerCase()}|${marketSearchLimit}`;
+          const cacheKey = marketSearchCacheKey(query, marketSearchLimit);
           marketSearchCacheRef.current.set(cacheKey, { timestamp: Date.now(), data: result });
-          pruneMarketSearchCache();
+          pruneMarketSearchCache(marketSearchCacheRef.current, Date.now());
         }
         if (!loadingMore) {
           setMarketSourceFilter("all");
@@ -282,7 +263,7 @@ export function InstallSkills() {
       });
 
     return () => { stale = true; };
-  }, [activeTab, debouncedMarketQuery, marketReloadKey, marketSearchLimit, marketTab, pruneMarketSearchCache, t]);
+  }, [activeTab, debouncedMarketQuery, marketReloadKey, marketSearchLimit, marketTab, t]);
 
   useEffect(() => {
     if (activeTab === "local" && !scanResult && !scanLoading) {
@@ -646,31 +627,17 @@ export function InstallSkills() {
     return () => observer.disconnect();
   }, [computeVisibleCount]);
 
-  const filteredMarketSkills = useMemo(() => {
-    const filtered = marketSourceFilter === "all"
-      ? marketSkills
-      : marketSkills.filter((skill) => skill.source === marketSourceFilter);
-    if (debouncedMarketQuery.trim().length > 0) {
-      return [...filtered].sort((a, b) => b.installs - a.installs);
-    }
-    return filtered;
-  }, [marketSkills, marketSourceFilter, debouncedMarketQuery]);
-
-  const totalMarketPages = Math.max(1, Math.ceil(filteredMarketSkills.length / MARKET_PAGE_SIZE));
-  const currentMarketPage = Math.min(marketPage, totalMarketPages);
-  const marketPageStart = (currentMarketPage - 1) * MARKET_PAGE_SIZE;
-  const paginatedMarketSkills = filteredMarketSkills.slice(
-    marketPageStart,
-    marketPageStart + MARKET_PAGE_SIZE
+  const filteredMarketSkills = useMemo(
+    () => filterMarketSkills(marketSkills, marketSourceFilter, debouncedMarketQuery),
+    [marketSkills, marketSourceFilter, debouncedMarketQuery]
   );
-  const visibleMarketPages = Array.from(
-    { length: totalMarketPages },
-    (_, index) => index + 1
-  ).filter((page) => {
-    if (totalMarketPages <= 7) return true;
-    if (page === 1 || page === totalMarketPages) return true;
-    return Math.abs(page - currentMarketPage) <= 1;
-  });
+
+  const {
+    totalPages: totalMarketPages,
+    currentPage: currentMarketPage,
+    items: paginatedMarketSkills,
+    visiblePages: visibleMarketPages,
+  } = paginateMarketSkills(filteredMarketSkills, marketPage, MARKET_PAGE_SIZE);
   const hasMarketQuery = debouncedMarketQuery.trim().length > 0;
   const canLoadMoreSearch = hasMarketQuery && marketSkills.length >= marketSearchLimit;
   const isLoadingMoreSearch = hasMarketQuery && marketLoadingMore;
