@@ -28,6 +28,7 @@ import { AddProjectDialog } from "./AddProjectDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AgentIcon } from "./AgentIcon";
 import * as api from "../lib/tauri";
+import { isSettingsPath } from "../views/settings/categories";
 import type { SyncHealth, ToolCategory, ToolInfo } from "../lib/tauri";
 import { getPresetIconOption } from "../lib/presetIcons";
 
@@ -183,7 +184,7 @@ export function Sidebar() {
   const handleCreatePreset = async (name: string, description?: string, icon?: string) => {
     await api.createPreset(name, description, icon);
     await Promise.all([refreshPresets(), refreshManagedSkills()]);
-    if (location.pathname === "/settings") {
+    if (isSettingsPath(location.pathname)) {
       navigate("/my-skills");
     }
     toast.success(t("preset.created"));
@@ -207,7 +208,7 @@ export function Sidebar() {
     if (!deleteTarget) return;
     await api.deletePreset(deleteTarget.id);
     await Promise.all([refreshPresets(), refreshManagedSkills()]);
-    if (location.pathname === "/settings") {
+    if (isSettingsPath(location.pathname)) {
       navigate("/my-skills");
     }
     toast.success(t("preset.deleted"));
@@ -761,7 +762,7 @@ export function Sidebar() {
             to="/settings"
             className={cn(
               "flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-sm font-medium transition-colors outline-none",
-              location.pathname === "/settings"
+              isSettingsPath(location.pathname)
                 ? "bg-surface-active text-primary"
                 : "text-tertiary hover:text-secondary hover:bg-surface-hover"
             )}
@@ -769,7 +770,7 @@ export function Sidebar() {
             <Settings
               className={cn(
                 "w-4 h-4 shrink-0",
-                location.pathname === "/settings" ? "text-accent" : "text-muted"
+                isSettingsPath(location.pathname) ? "text-accent" : "text-muted"
               )}
             />
             {t("sidebar.settings")}

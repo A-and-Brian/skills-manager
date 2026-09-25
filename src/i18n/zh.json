@@ -589,6 +589,15 @@
   },
   "settings": {
     "title": "设置",
+    "categories": {
+      "general": "通用",
+      "agents": "Agent",
+      "library": "技能库与同步",
+      "backup": "Git 备份",
+      "network": "网络",
+      "remote": "远程主机",
+      "about": "关于"
+    },
     "supportedAgents": "支持的 Agent",
     "agentsSummary": "已检测 {{detected}} 个，已启用 {{enabled}} 个，自定义 {{custom}} 个",
     "detectedAgents": "已检测",
@@ -635,7 +644,6 @@
     "customAgentRemoved": "自定义 Agent 已移除",
     "selectFolder": "选择",
     "addAgent": "添加",
-    "globalConfig": "全局配置",
     "repoPath": "中央仓库路径",
     "repoPathDesc": "所有 Skills 和 Preset 配置的默认存储位置。",
     "repoPathSaved": "中央仓库路径已更新",

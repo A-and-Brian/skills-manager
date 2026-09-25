@@ -5,6 +5,7 @@ import type { AppUpdateInfo, ManagedSkill, Project, Preset, RemoteHost, ToolInfo
 import * as api from "../lib/tauri";
 import i18n from "../i18n";
 import { applyTextSize } from "../lib/textScale";
+import { settingsPath } from "../views/settings/categories";
 import { toast } from "sonner";
 
 interface AppState {
@@ -335,8 +336,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
               action: {
                 label: i18n.t("settings.viewUpdate"),
                 onClick: () => {
-                  if (!window.location.pathname.endsWith("/settings")) {
-                    window.history.pushState(null, "", "/settings");
+                  const aboutPath = settingsPath("about");
+                  if (window.location.pathname !== aboutPath) {
+                    window.history.pushState(null, "", aboutPath);
                     window.dispatchEvent(new PopStateEvent("popstate"));
                   }
                 },

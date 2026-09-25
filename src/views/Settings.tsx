@@ -1,23 +1,55 @@
 import { useState, useEffect } from "react";
-import { Settings2, Loader2, AlertTriangle, Bug } from "lucide-react";
+import { Link, Navigate, useParams } from "react-router-dom";
+import {
+  Settings2,
+  Loader2,
+  AlertTriangle,
+  Bug,
+  SlidersHorizontal,
+  Bot,
+  Library,
+  GitBranch,
+  Globe,
+  Server,
+  Info,
+  type LucideIcon,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { writeText as clipboardWriteText } from "@tauri-apps/plugin-clipboard-manager";
+import { cn } from "../utils";
 import { useApp } from "../context/AppContext";
 import * as api from "../lib/tauri";
 import { ACTION_BUTTON_CLASS, GITHUB_URL } from "./settings/shared";
+import {
+  SETTINGS_CATEGORIES,
+  resolveSettingsCategory,
+  settingsPath,
+  type SettingsCategory,
+} from "./settings/categories";
+import { GeneralSection } from "./settings/GeneralSection";
 import { AgentsSection } from "./settings/AgentsSection";
-import { GlobalConfigSection } from "./settings/GlobalConfigSection";
-import { ProxySection } from "./settings/ProxySection";
-import { AutoUpdateSection } from "./settings/AutoUpdateSection";
-import { GitSyncSection } from "./settings/GitSyncSection";
+import { LibrarySection } from "./settings/LibrarySection";
+import { BackupSection } from "./settings/BackupSection";
+import { NetworkSection } from "./settings/NetworkSection";
 import { RemoteHostsSection } from "./settings/RemoteHostsSection";
 import { AboutSection } from "./settings/AboutSection";
 
+const CATEGORY_ICONS: Record<SettingsCategory, LucideIcon> = {
+  general: SlidersHorizontal,
+  agents: Bot,
+  library: Library,
+  backup: GitBranch,
+  network: Globe,
+  remote: Server,
+  about: Info,
+};
+
 export function Settings() {
   const { t, i18n } = useTranslation();
-  const { tools } = useApp();
+  const { category: categoryParam } = useParams();
+  const { tools, appUpdate } = useApp();
   const [reportingIssue, setReportingIssue] = useState(false);
   const [lastPanic, setLastPanic] = useState<api.PanicInfo | null>(null);
   const [repoWarnings, setRepoWarnings] = useState<string[]>([]);
@@ -129,8 +161,13 @@ export function Settings() {
     }
   };
 
+  const category = resolveSettingsCategory(categoryParam);
+  if (!category) {
+    return <Navigate to={settingsPath()} replace />;
+  }
+
   return (
-    <div className="app-page app-page-narrow">
+    <div className="app-page">
       <div className="app-page-header">
         <h1 className="app-page-title flex items-center gap-2">
           <Settings2 className="w-4 h-4 text-accent" />
@@ -138,21 +175,8 @@ export function Settings() {
         </h1>
       </div>
 
-      <div className="space-y-6">
-        <AgentsSection />
-
-        <GlobalConfigSection />
-
-        <ProxySection />
-
-        <AutoUpdateSection />
-
-        <GitSyncSection />
-
-        <RemoteHostsSection />
-
-        {/* About */}
-        <section className="space-y-2">
+      {(repoWarnings.length > 0 || lastPanic) && (
+        <div className="space-y-2">
           {repoWarnings.length > 0 && (
             <div className="app-panel flex flex-wrap items-start gap-2 p-3 border border-amber-500/40 bg-amber-500/10">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300" />
@@ -193,8 +217,59 @@ export function Settings() {
               </div>
             </div>
           )}
-          <AboutSection reportingIssue={reportingIssue} onReportIssue={handleReportIssue} />
-        </section>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-6 md:flex-row">
+        <nav
+          aria-label={t("settings.title")}
+          className="md:sticky md:top-[48px] md:w-[180px] md:shrink-0 md:self-start"
+        >
+          <ul className="scrollbar-hide flex gap-1 overflow-x-auto md:flex-col md:gap-0.5 md:overflow-visible">
+            {SETTINGS_CATEGORIES.map((slug) => {
+              const Icon = CATEGORY_ICONS[slug];
+              const isActive = slug === category;
+              return (
+                <li key={slug} className="shrink-0">
+                  <Link
+                    to={settingsPath(slug)}
+                    aria-current={isActive ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-2.5 whitespace-nowrap px-2.5 py-[7px] rounded-md text-sm font-medium transition-colors outline-none",
+                      "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
+                      isActive
+                        ? "bg-surface-active text-primary"
+                        : "text-tertiary hover:text-secondary hover:bg-surface-hover"
+                    )}
+                  >
+                    <Icon className={cn("w-4 h-4 shrink-0", isActive ? "text-accent" : "text-muted")} />
+                    {t(`settings.categories.${slug}`)}
+                    {slug === "about" && appUpdate?.has_update && (
+                      <span
+                        className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
+                        title={t("settings.updateAvailable", { version: appUpdate.latest_version })}
+                      />
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        {/* Every category stays mounted so switching keeps half-typed input and
+            open forms, and doesn't re-fetch; only the active one is shown. */}
+        <div className="min-w-0 flex-1">
+          <div hidden={category !== "general"}><GeneralSection /></div>
+          <div hidden={category !== "agents"}><AgentsSection /></div>
+          <div hidden={category !== "library"}><LibrarySection /></div>
+          <div hidden={category !== "backup"}><BackupSection /></div>
+          <div hidden={category !== "network"}><NetworkSection /></div>
+          <div hidden={category !== "remote"}><RemoteHostsSection /></div>
+          <div hidden={category !== "about"}>
+            <AboutSection reportingIssue={reportingIssue} onReportIssue={handleReportIssue} />
+          </div>
+        </div>
       </div>
     </div>
   );

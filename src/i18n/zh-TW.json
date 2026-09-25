@@ -541,6 +541,15 @@
   },
   "settings": {
     "title": "設定",
+    "categories": {
+      "general": "一般",
+      "agents": "Agent",
+      "library": "技能庫與同步",
+      "backup": "Git 備份",
+      "network": "網路",
+      "remote": "遠端主機",
+      "about": "關於"
+    },
     "supportedAgents": "支援的 Agent",
     "agentsSummary": "已偵測 {{detected}} 個，已啟用 {{enabled}} 個，自訂 {{custom}} 個",
     "detectedAgents": "已偵測",
@@ -586,7 +595,6 @@
     "customAgentRemoved": "自訂 Agent 已移除",
     "selectFolder": "選擇",
     "addAgent": "新增",
-    "globalConfig": "全域設定",
     "repoPath": "中央倉庫路徑",
     "repoPathDesc": "所有 Skills 和 Preset 設定的預設儲存位置。",
     "repoPathSaved": "中央倉庫路徑已更新",

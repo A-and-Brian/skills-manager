@@ -589,6 +589,15 @@
   },
   "settings": {
     "title": "Settings",
+    "categories": {
+      "general": "General",
+      "agents": "Agents",
+      "library": "Library & Sync",
+      "backup": "Git Backup",
+      "network": "Network",
+      "remote": "Remote Hosts",
+      "about": "About"
+    },
     "supportedAgents": "Supported Agents",
     "agentsSummary": "{{detected}} detected, {{enabled}} enabled, {{custom}} custom",
     "detectedAgents": "Detected",
@@ -635,7 +644,6 @@
     "customAgentRemoved": "Custom agent removed",
     "selectFolder": "Select",
     "addAgent": "Add",
-    "globalConfig": "Global Configuration",
     "repoPath": "Central Repository Path",
     "repoPathDesc": "Default storage location for all Skills and preset configs.",
     "repoPathSaved": "Central repository path updated",

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import * as api from "../../lib/tauri";
 import { ACTION_BUTTON_CLASS, FIELD_CLASS } from "./shared";
 
-export function ProxySection() {
+export function NetworkSection() {
   const { t } = useTranslation();
   const [proxyInput, setProxyInput] = useState("");
   const [proxySaving, setProxySaving] = useState(false);
