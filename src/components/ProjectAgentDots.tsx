@@ -30,6 +30,8 @@ interface Props {
   onToggle?: (agentKey: string, enabled: boolean) => void;
   /** Agent key currently performing an assign/remove operation; shows a loader on that dot. */
   pendingKey?: string | null;
+  /** Agent whose dot cannot be toggled, with the reason shown as its title. */
+  locked?: { key: string; reason: string } | null;
 }
 
 export function ProjectAgentDots({
@@ -41,6 +43,7 @@ export function ProjectAgentDots({
   className,
   onToggle,
   pendingKey,
+  locked,
 }: Props) {
   const { t } = useTranslation();
   const assignedSet = new Set(assignedAgents);
@@ -103,8 +106,12 @@ export function ProjectAgentDots({
       {visible.map((dot) => {
         const useIcon = hasAgentIcon(dot.key);
         const isPending = pendingKey === dot.key;
-        const interactive = !!onToggle && !isPending;
-        const title = `${dot.displayName}${stateTitle[dot.state]}${onToggle ? clickHint[dot.state] : ""}`;
+        const isLocked = locked?.key === dot.key;
+        const toggles = !!onToggle && !isLocked;
+        const interactive = toggles && !isPending;
+        const title = isLocked
+          ? `${dot.displayName} · ${locked.reason}`
+          : `${dot.displayName}${stateTitle[dot.state]}${onToggle ? clickHint[dot.state] : ""}`;
         const baseClass = cn(
           "inline-flex select-none items-center justify-center overflow-hidden rounded-[4px] transition-colors",
           dim,
@@ -123,7 +130,7 @@ export function ProjectAgentDots({
           shortLabel(dot.displayName, dot.key)
         );
 
-        if (onToggle) {
+        if (toggles) {
           return (
             <button
               type="button"

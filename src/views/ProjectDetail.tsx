@@ -21,7 +21,7 @@ import {
   CheckCircle2,
   Circle,
   Tag,
-  Bot,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -39,6 +39,7 @@ import { SkillMarkdown } from "../components/SkillMarkdown";
 import { DocumentDiffViewer } from "../components/DocumentDiffViewer";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
 import { enabledInstalledAgentKeys, getDefaultExportAgents } from "../lib/exportAgents";
+import { groupProjectSkills, type ProjectSkillGroup } from "../lib/projectSkillGroups";
 import { cn } from "../utils";
 import * as api from "../lib/tauri";
 import type { ProjectSkill, ManagedSkill, ProjectAgentTarget } from "../lib/tauri";
@@ -47,23 +48,6 @@ import { AddSkillsSheet } from "../components/AddSkillsSheet";
 import { ProjectAgentsDialog } from "../components/ProjectAgentsDialog";
 const projectLastUsedAgentsKey = (projectId: string) =>
   `project_last_used_export_agents:${projectId}`;
-
-interface ProjectSkillGroup {
-  id: string;
-  name: string;
-  dir_name: string;
-  relative_path: string;
-  description: string | null;
-  files: string[];
-  variants: ProjectSkill[];
-  enabledCount: number;
-  totalCount: number;
-  primaryVariant: ProjectSkill;
-  status: ProjectSkill["sync_status"];
-  tags: string[];
-  centerSkillIds: string[];
-  agentsOverridden: boolean;
-}
 
 function getSyncStatusMeta(t: (key: string) => string, status: ProjectSkill["sync_status"]) {
   switch (status) {
@@ -109,22 +93,6 @@ function getAgentDotTargets(variants: ProjectSkill[]) {
     }
   }
   return targets;
-}
-
-function getGroupStatus(variants: ProjectSkill[]): ProjectSkill["sync_status"] {
-  const priority: ProjectSkill["sync_status"][] = [
-    "diverged",
-    "project_newer",
-    "center_newer",
-    "project_only",
-    "in_sync",
-  ];
-  for (const status of priority) {
-    if (variants.some((variant) => variant.sync_status === status)) {
-      return status;
-    }
-  }
-  return "project_only";
 }
 
 export function ProjectDetail() {
@@ -237,53 +205,7 @@ export function ProjectDetail() {
     }
   }, [project, loading, navigate]);
 
-  const groupedSkills = useMemo<ProjectSkillGroup[]>(() => {
-    const groups = new Map<string, ProjectSkillGroup>();
-    for (const skill of skills) {
-      const key = skill.relative_path.toLowerCase();
-      const existing = groups.get(key);
-      if (existing) {
-        existing.variants.push(skill);
-        existing.enabledCount += skill.enabled ? 1 : 0;
-        existing.totalCount += 1;
-        existing.files = Array.from(new Set([...existing.files, ...skill.files])).sort();
-        existing.tags = Array.from(new Set([...existing.tags, ...skill.tags])).sort((a, b) => a.localeCompare(b));
-        existing.agentsOverridden ||= skill.agents_overridden;
-        if (skill.center_skill_id && !existing.centerSkillIds.includes(skill.center_skill_id)) {
-          existing.centerSkillIds.push(skill.center_skill_id);
-          existing.centerSkillIds.sort((a, b) => a.localeCompare(b));
-        }
-        if (!existing.description && skill.description) {
-          existing.description = skill.description;
-        }
-        continue;
-      }
-      groups.set(key, {
-        id: key,
-        name: skill.name,
-        dir_name: skill.dir_name,
-        relative_path: skill.relative_path,
-        description: skill.description,
-        files: [...skill.files],
-        variants: [skill],
-        enabledCount: skill.enabled ? 1 : 0,
-        totalCount: 1,
-        primaryVariant: skill,
-        status: skill.sync_status,
-        tags: [...skill.tags].sort((a, b) => a.localeCompare(b)),
-        centerSkillIds: skill.center_skill_id ? [skill.center_skill_id] : [],
-        agentsOverridden: skill.agents_overridden,
-      });
-    }
-    return Array.from(groups.values())
-      .map((group) => ({
-        ...group,
-        variants: [...group.variants].sort((a, b) => a.agent_display_name.localeCompare(b.agent_display_name)),
-        primaryVariant: [...group.variants].sort((a, b) => a.agent_display_name.localeCompare(b.agent_display_name))[0],
-        status: getGroupStatus(group.variants),
-      }))
-      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-  }, [skills]);
+  const groupedSkills = useMemo(() => groupProjectSkills(skills), [skills]);
 
   useEffect(() => {
     if (!detailSkill) return;
@@ -346,6 +268,29 @@ export function ProjectDetail() {
       relative_skills_dir: ".claude/skills",
     }];
   }, [projectAgentTargets]);
+
+  const isCopyMode = project?.deploy_mode === "copy";
+  // The agent group holding a vendored copy stays on: removing it would remove
+  // the files every other agent links to. Decided from the disk, so it holds
+  // after the project switches back to linking.
+  const vendoredLockOf = (skill: ProjectSkillGroup) => {
+    const vendored = skill.vendoredVariant;
+    if (!vendored) return null;
+    const agents = projectAgentTargets.find((target) => target.key === vendored.agent)?.display_name
+      ?? vendored.agent_display_name;
+    return { key: vendored.agent, reason: t("project.vendored.lockedReason", { agents }) };
+  };
+
+  // Independent copies are handled together. Links into .agents/skills follow
+  // their vendored copy: then one call per copy that is not such a link, in
+  // turn, so no two calls race on the vendored copy.
+  const forEachCopy = async (skill: ProjectSkillGroup, run: (variant: ProjectSkill) => Promise<unknown>) => {
+    if (!skill.variants.some((variant) => variant.alias_of)) {
+      await Promise.all(skill.variants.map(run));
+      return;
+    }
+    for (const variant of skill.effectiveVariants) await run(variant);
+  };
 
   const projectSkillDirNamesByAgent = useMemo(() => {
     const map: Record<string, string[]> = {};
@@ -564,7 +509,9 @@ export function ProjectDetail() {
   ): Promise<{ alignFailed: number; conflicting: number }> => {
     if (!id) return { alignFailed: 0, conflicting: 0 };
 
-    const unproven = skill.variants.filter((v) => v.sync_status !== "in_sync");
+    // Links into .agents/skills read their vendored copy, so they are not
+    // copies of their own here.
+    const unproven = skill.effectiveVariants.filter((v) => v.sync_status !== "in_sync");
     if (unproven.length > 1) {
       return { alignFailed: 0, conflicting: unproven.length };
     }
@@ -579,7 +526,7 @@ export function ProjectDetail() {
     // onto one real directory, and each realign removes and rebuilds its
     // target, so concurrent calls on one path make a call fail for no reason.
     let alignFailed = 0;
-    for (const variant of skill.variants.filter((v) => v !== winner)) {
+    for (const variant of skill.effectiveVariants.filter((v) => v !== winner)) {
       try {
         await api.updateProjectSkillFromCenter(id, variant.relative_path, variant.agent);
       } catch {
@@ -617,10 +564,8 @@ export function ProjectDetail() {
     if (!id) return;
     setUpdatingProjectSkill(getSkillKey(skill));
     try {
-      await Promise.all(
-        skill.variants.map((variant) =>
-          api.updateProjectSkillFromCenter(id, variant.relative_path, variant.agent)
-        )
+      await forEachCopy(skill, (variant) =>
+        api.updateProjectSkillFromCenter(id, variant.relative_path, variant.agent)
       );
       if (skill.status === "project_newer") {
         toast.success(t("project.resetFromCenterSuccess", { name: skill.name }));
@@ -640,10 +585,8 @@ export function ProjectDetail() {
     setTogglingSkill(getSkillKey(skill));
     try {
       const nextEnabled = skill.enabledCount !== skill.totalCount;
-      await Promise.all(
-        skill.variants.map((variant) =>
-          api.toggleProjectSkill(id, variant.relative_path, variant.agent, nextEnabled)
-        )
+      await forEachCopy(skill, (variant) =>
+        api.toggleProjectSkill(id, variant.relative_path, variant.agent, nextEnabled)
       );
       if (skill.enabledCount === skill.totalCount) {
         toast.success(t("project.skillDisabled", { name: skill.name }));
@@ -666,7 +609,9 @@ export function ProjectDetail() {
     const existingVariant = skill.variants.find((variant) => variant.agent === agentKey);
 
     const centerSkillId = skill.centerSkillIds[0];
-    if (enabled && !centerSkillId) {
+    if (!enabled && vendoredLockOf(skill)?.key === agentKey) return;
+    // A new agent links to a vendored copy, so no library skill is needed.
+    if (enabled && !centerSkillId && !skill.vendoredVariant) {
       toast.error(t("project.agentAddRequiresCenter", { agent: displayName }));
       return;
     }
@@ -717,10 +662,8 @@ export function ProjectDetail() {
   const handleDeleteSkill = async () => {
     if (!id || !deleteTarget) return;
     try {
-      await Promise.all(
-        deleteTarget.variants.map((variant) =>
-          api.deleteProjectSkill(id, variant.relative_path, variant.agent)
-        )
+      await forEachCopy(deleteTarget, (variant) =>
+        api.deleteProjectSkill(id, variant.relative_path, variant.agent, true)
       );
       toast.success(t("project.skillDeleted", { name: deleteTarget.name }));
       await Promise.all([loadSkills(), refreshProjects()]);
@@ -735,10 +678,8 @@ export function ProjectDetail() {
     let failed = 0;
     for (const skill of selectedSkills) {
       try {
-        await Promise.all(
-          skill.variants.map((variant) =>
-            api.deleteProjectSkill(id, variant.relative_path, variant.agent)
-          )
+        await forEachCopy(skill, (variant) =>
+          api.deleteProjectSkill(id, variant.relative_path, variant.agent, true)
         );
         deleted++;
       } catch {
@@ -767,17 +708,13 @@ export function ProjectDetail() {
       for (const skill of selectedSkills) {
         try {
           if (enabling && skill.enabledCount !== skill.totalCount) {
-            await Promise.all(
-              skill.variants.map((variant) =>
-                api.toggleProjectSkill(id, variant.relative_path, variant.agent, true)
-              )
+            await forEachCopy(skill, (variant) =>
+              api.toggleProjectSkill(id, variant.relative_path, variant.agent, true)
             );
             count++;
           } else if (!enabling && skill.enabledCount > 0) {
-            await Promise.all(
-              skill.variants.map((variant) =>
-                api.toggleProjectSkill(id, variant.relative_path, variant.agent, false)
-              )
+            await forEachCopy(skill, (variant) =>
+              api.toggleProjectSkill(id, variant.relative_path, variant.agent, false)
             );
             count++;
           }
@@ -859,10 +796,8 @@ export function ProjectDetail() {
           skill.status === "diverged";
         if (!canUpdateProject) continue;
         try {
-          await Promise.all(
-            skill.variants.map((variant) =>
-              api.updateProjectSkillFromCenter(id, variant.relative_path, variant.agent)
-            )
+          await forEachCopy(skill, (variant) =>
+            api.updateProjectSkillFromCenter(id, variant.relative_path, variant.agent)
           );
           updated++;
         } catch {
@@ -957,6 +892,7 @@ export function ProjectDetail() {
             <p className="mt-1 truncate text-[12px] leading-5 text-muted" title={project.path}>
               {project.path}
               {groupedSkills.length > 0 && ` \u00B7 ${enabledCount} / ${groupedSkills.length} ${t("project.enabled")}`}
+              {isCopyMode && ` \u00B7 ${t("project.settings.mode.copy")}`}
             </p>
           </div>
 
@@ -1039,7 +975,7 @@ export function ProjectDetail() {
                 className="app-toolbar-button app-toolbar-button-secondary"
                 title={t("project.agentsButtonHint")}
               >
-                <Bot className="h-3.5 w-3.5" />
+                <SlidersHorizontal className="h-3.5 w-3.5" />
                 {t("project.agentsButton")}
               </button>
             )}
@@ -1357,6 +1293,7 @@ export function ProjectDetail() {
                           limit={4}
                           size="sm"
                           onToggle={(agentKey, enabled) => handleToggleDetailAgent(skill, agentKey, enabled)}
+                          locked={vendoredLockOf(skill)}
                           pendingKey={
                             togglingAgentTarget?.skillKey === skillKey
                               ? togglingAgentTarget.agent
@@ -1506,6 +1443,7 @@ export function ProjectDetail() {
                         ? undefined
                         : (agentKey, enabled) => handleToggleDetailAgent(skill, agentKey, enabled)
                     }
+                    locked={vendoredLockOf(skill)}
                     pendingKey={
                       togglingAgentTarget?.skillKey === skillKey
                         ? togglingAgentTarget.agent
@@ -1591,6 +1529,8 @@ export function ProjectDetail() {
           }
           onToggleAgent={(agentKey, enabled) => handleToggleDetailAgent(detailSkill, agentKey, enabled)}
           onUseProjectAgents={() => handleUseProjectAgents(detailSkill)}
+          vendoredPath={detailSkill.vendoredVariant?.path ?? null}
+          vendoredLock={vendoredLockOf(detailSkill)}
           docContent={docContent}
           docLoading={docLoading}
           centerDocContent={centerDocContent}
@@ -1632,6 +1572,7 @@ export function ProjectDetail() {
         <ProjectAgentsDialog
           open={showAgentsDialog}
           projectId={id}
+          deployMode={project.deploy_mode}
           targets={projectAgentTargets}
           onClose={() => setShowAgentsDialog(false)}
           onApplied={async () => {
@@ -1670,6 +1611,8 @@ function ProjectSkillDetailPanel({
   togglingAgent,
   onToggleAgent,
   onUseProjectAgents,
+  vendoredPath,
+  vendoredLock,
   docContent,
   docLoading,
   centerDocContent,
@@ -1681,6 +1624,9 @@ function ProjectSkillDetailPanel({
   togglingAgent: string | null;
   onToggleAgent: (agentKey: string, enabled: boolean) => void;
   onUseProjectAgents: () => void;
+  /** The skill's vendored copy, if it has one. */
+  vendoredPath: string | null;
+  vendoredLock: { key: string; reason: string } | null;
   docContent: string | null;
   docLoading: boolean;
   centerDocContent: string | null;
@@ -1692,19 +1638,22 @@ function ProjectSkillDetailPanel({
   const supportsCenterDiff = skill.centerSkillIds.length > 0;
   const toggleItems: AgentToggleItem[] = targets.map((target) => {
     const variant = skill.variants.find((item) => item.agent === target.key);
+    const locked = vendoredLock?.key === target.key;
     return {
       key: target.key,
       displayName: target.display_name,
       enabled: Boolean(variant),
       isAvailable: target.installed && target.enabled,
-      disabled: (!variant && (!target.installed || !target.enabled)),
-      badgeLabel: !target.installed
-        ? t("mySkills.agentToggleNotInstalled")
-        : !target.enabled
-          ? t("mySkills.agentToggleDisabledGlobally")
-          : variant && !variant.enabled
-            ? t("project.disabled")
-            : null,
+      disabled: locked || (!variant && (!target.installed || !target.enabled)),
+      badgeLabel: locked
+        ? t("project.vendored.badge")
+        : !target.installed
+          ? t("mySkills.agentToggleNotInstalled")
+          : !target.enabled
+            ? t("mySkills.agentToggleDisabledGlobally")
+            : variant && !variant.enabled
+              ? t("project.disabled")
+              : null,
     };
   });
   const meta = (
@@ -1769,6 +1718,15 @@ function ProjectSkillDetailPanel({
           >
             {t("project.useProjectAgents")}
           </button>
+        </div>
+      )}
+
+      {vendoredPath && (
+        <div className="mb-3 space-y-1 rounded-md border border-border-subtle bg-bg-secondary px-3 py-2 text-[12px] text-muted">
+          <p className="text-secondary">{vendoredLock?.reason}</p>
+          <p className="truncate font-mono" title={vendoredPath}>{vendoredPath}</p>
+          <p>{t("project.vendored.commitHint")}</p>
+          <p>{t("project.vendored.windowsNote")}</p>
         </div>
       )}
 

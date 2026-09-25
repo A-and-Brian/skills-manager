@@ -1,0 +1,89 @@
+import { describe, expect, it } from "vitest";
+import type { ProjectSkill } from "./tauri";
+import { groupProjectSkills, isVendoredSkillsDir } from "./projectSkillGroups";
+
+function variant(agent: string, displayName: string, overrides: Partial<ProjectSkill> = {}): ProjectSkill {
+  return {
+    name: "Review",
+    dir_name: "review",
+    relative_path: "review",
+    description: null,
+    path: `/p/.${agent}/skills/review`,
+    files: ["SKILL.md"],
+    enabled: true,
+    agent,
+    agent_display_name: displayName,
+    tags: [],
+    in_center: true,
+    sync_status: "in_sync",
+    center_skill_id: "lib-review",
+    agents_overridden: false,
+    alias_of: null,
+    vendored: false,
+    ...overrides,
+  };
+}
+
+const vendored = variant("cline", "Cline / Warp", { path: "/p/.agents/skills/review", vendored: true });
+const claudeLink = variant("claude_code", "Claude Code", { alias_of: "review" });
+const cursorLink = variant("cursor", "Cursor", { alias_of: "review" });
+
+describe("groupProjectSkills", () => {
+  it("folds links into .agents/skills under the vendored copy", () => {
+    const [group] = groupProjectSkills([claudeLink, vendored, cursorLink]);
+
+    expect(group.variants).toHaveLength(3);
+    expect(group.primaryVariant).toBe(vendored);
+    expect(group.effectiveVariants).toEqual([vendored]);
+    expect(group.vendoredVariant).toBe(vendored);
+  });
+
+  it("keeps a real directory beside the vendored copy as its own copy", () => {
+    const realDir = variant("claude_code", "Claude Code");
+    const [group] = groupProjectSkills([vendored, realDir, cursorLink]);
+
+    expect(group.effectiveVariants).toEqual([realDir, vendored]);
+  });
+
+  it("touches every copy of a skill nothing links to through .agents/skills", () => {
+    const libraryLink = variant("cline", "Cline / Warp", { path: "/p/.agents/skills/review" });
+    const claude = variant("claude_code", "Claude Code");
+    const [group] = groupProjectSkills([claude, libraryLink]);
+
+    expect(group.effectiveVariants).toEqual(group.variants);
+    // A link kept in .agents/skills is an ordinary copy, not a vendored one.
+    expect(group.vendoredVariant).toBeNull();
+  });
+
+  it("reports the most pressing status of any copy", () => {
+    const [group] = groupProjectSkills(
+      [vendored, variant("cursor", "Cursor", { sync_status: "center_newer" }), variant("pi", "Pi", { sync_status: "project_newer" })]
+    );
+
+    expect(group.status).toBe("project_newer");
+    expect(group.totalCount).toBe(3);
+  });
+
+  it("still shows a skill that only has links", () => {
+    const [group] = groupProjectSkills([cursorLink, claudeLink]);
+
+    expect(group.primaryVariant).toBe(claudeLink);
+    expect(group.effectiveVariants).toHaveLength(2);
+  });
+
+  it("groups by relative path regardless of case and sorts skills by name", () => {
+    const other = variant("claude_code", "Claude Code", { name: "api", relative_path: "api" });
+    const groups = groupProjectSkills([vendored, variant("cursor", "Cursor", { relative_path: "Review" }), other]);
+
+    expect(groups.map((group) => [group.name, group.totalCount])).toEqual([["api", 1], ["Review", 2]]);
+  });
+});
+
+describe("isVendoredSkillsDir", () => {
+  it("matches .agents/skills however it is written", () => {
+    expect(isVendoredSkillsDir(".agents/skills")).toBe(true);
+    expect(isVendoredSkillsDir("./.agents/skills/")).toBe(true);
+    expect(isVendoredSkillsDir(".agents\\skills")).toBe(true);
+    expect(isVendoredSkillsDir(".claude/skills")).toBe(false);
+  });
+});

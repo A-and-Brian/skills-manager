@@ -1020,13 +1020,13 @@
     "batchTagsUpdated": "已更新 {{count}} 个中心 Skill 的标签",
     "batchTagsFailed": "{{count}} 个中心 Skill 标签更新失败",
     "batchTagScopeNote": "标签保存在中央技能库里，改动会影响所有使用这个 Skill 的项目。只属于本项目的本地 Skill 不会被修改。",
-    "agentsButton": "Agent",
-    "agentsButtonHint": "选择此项目使用的 Agent",
+    "agentsButton": "设置",
+    "agentsButtonHint": "此项目的部署方式和 Agent",
     "agentsOverridden": "此 Skill 的 Agent 是手动选择的，项目级的 Agent 变更会跳过它。",
     "useProjectAgents": "使用项目 Agent",
     "useProjectAgentsDone": "“{{name}}”已改用项目的 Agent",
     "agentsDialog": {
-      "title": "项目 Agent",
+      "title": "项目设置",
       "reviewTitle": "检查 Agent 变更",
       "description": "新添加的 Skill 会部署到这些 Agent。修改后，项目中已有的 Skill 也会随之更新。",
       "sharedFolderHint": "列在一起的 Agent 共用同一个文件夹，因此会一起添加和移除。",
@@ -1042,11 +1042,46 @@
         "real_directory": "是真实文件夹而非链接，予以保留",
         "foreign_link": "是指向内置副本以外位置的链接，予以保留",
         "unavailable_agent": "未安装或已停用",
-        "shared_dir": "共用文件夹，予以保留"
+        "shared_dir": "存放 .agents/skills 中的内置副本，予以保留"
       },
       "applied": "Agent 已更新：添加 {{added}} 个，移除 {{removed}} 个",
       "failed": "{{count}} 项变更失败",
       "saved": "项目 Agent 已保存"
+    },
+    "settings": {
+      "modeLabel": "部署方式",
+      "agentsLabel": "Agent",
+      "mode": {
+        "link": "链接到技能库",
+        "copy": "内置副本"
+      },
+      "modeHint": {
+        "link": "Skill 以链接指向技能库，随技能库变化。",
+        "copy": "Skill 复制到 .agents/skills，随项目一起提交，其他 Agent 链接到那里。技能库更新只在你要求时拉取。"
+      },
+      "convertTitle": "切换为内置副本",
+      "convertIntro": "每个 Skill 都会复制到 .agents/skills，其他 Agent 改为链接到该副本。此操作无法自动撤销。",
+      "convertSummary": "复制 {{vendored}} 个，重新指向 {{relinked}} 个链接，保留 {{kept}} 个",
+      "convertEmpty": "没有需要移动的 Skill。之后添加的 Skill 会以内置副本保存。",
+      "copyFrom": "复制自 {{path}}",
+      "keepReason": {
+        "keep_real_dir": "是真实文件夹，保持不变",
+        "keep_foreign_link": "链接到不同的内容，保持不变",
+        "keep_mixed_state": "启用状态与副本不同，保持不变"
+      },
+      "convert": "转换",
+      "converted": "已转换：复制 {{vendored}} 个，重新链接 {{relinked}} 个，保留 {{kept}} 个",
+      "convertFailed": "{{count}} 项失败",
+      "linkTitle": "切换为链接",
+      "linkWarning": "已在 .agents/skills 中的 Skill 会原样保留。只有之后添加的 Skill 会链接到技能库。",
+      "switchToLink": "切换为链接",
+      "switchedToLink": "之后添加的 Skill 会链接到技能库"
+    },
+    "vendored": {
+      "badge": "内置副本",
+      "lockedReason": "内置副本（.agents/skills）— 由 {{agents}} 共用",
+      "commitHint": "请提交 .agents/skills，这样克隆项目的人都能拿到这些文件。",
+      "windowsNote": "Windows：Agent 链接需要开启开发者模式。若 git 设置 core.symlinks=false，链接会被检出为普通文件；删除它们后重新应用 Agent 即可。"
     }
   },
   "presetActions": {

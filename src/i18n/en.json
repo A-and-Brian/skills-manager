@@ -1020,13 +1020,13 @@
     "batchTagsUpdated": "Tags updated for {{count}} center skills",
     "batchTagsFailed": "{{count}} center skills failed to update tags",
     "batchTagScopeNote": "Tags live in the central library, so edits affect every project using these skills. Project-only local skills are left untouched.",
-    "agentsButton": "Agents",
-    "agentsButtonHint": "Choose which agents this project uses",
+    "agentsButton": "Settings",
+    "agentsButtonHint": "Deploy mode and agents for this project",
     "agentsOverridden": "This skill's agents were chosen by hand, so project-wide agent changes skip it.",
     "useProjectAgents": "Use project agents",
     "useProjectAgentsDone": "\"{{name}}\" now uses the project's agents",
     "agentsDialog": {
-      "title": "Project agents",
+      "title": "Project settings",
       "reviewTitle": "Review agent changes",
       "description": "New skills are added to these agents. Changing them also updates the skills already in this project.",
       "sharedFolderHint": "Agents listed together share one folder, so they are added and removed together.",
@@ -1042,11 +1042,46 @@
         "real_directory": "a real folder, not a link, so it is kept",
         "foreign_link": "a link to something other than the vendored copy, so it is kept",
         "unavailable_agent": "not installed or turned off",
-        "shared_dir": "shared folder, so it is kept"
+        "shared_dir": "holds the vendored copy in .agents/skills, so it stays"
       },
       "applied": "Agents updated: {{added}} added, {{removed}} removed",
       "failed": "{{count}} changes failed",
       "saved": "Project agents saved"
+    },
+    "settings": {
+      "modeLabel": "Deploy mode",
+      "agentsLabel": "Agents",
+      "mode": {
+        "link": "Linked to library",
+        "copy": "Vendored copy"
+      },
+      "modeHint": {
+        "link": "Skills link to your library and follow its changes.",
+        "copy": "Skills are copied into .agents/skills to commit with the project, and other agents link there. Library updates come in only when you ask."
+      },
+      "convertTitle": "Switch to vendored copy",
+      "convertIntro": "Each skill is copied into .agents/skills and the other agents link to that copy. This can't be undone automatically.",
+      "convertSummary": "{{vendored}} to copy, {{relinked}} links to re-point, {{kept}} kept as they are",
+      "convertEmpty": "No skills to move. New skills will be vendored.",
+      "copyFrom": "Copied from {{path}}",
+      "keepReason": {
+        "keep_real_dir": "a real folder, kept as it is",
+        "keep_foreign_link": "links to different content, kept as it is",
+        "keep_mixed_state": "on/off state differs from the copy, kept as it is"
+      },
+      "convert": "Convert",
+      "converted": "Converted: {{vendored}} copied, {{relinked}} relinked, {{kept}} kept",
+      "convertFailed": "{{count}} items failed",
+      "linkTitle": "Switch to linked",
+      "linkWarning": "Skills already in .agents/skills stay there as they are. Only skills you add from now on link to the library.",
+      "switchToLink": "Switch to linked",
+      "switchedToLink": "New skills will link to the library"
+    },
+    "vendored": {
+      "badge": "Vendored copy",
+      "lockedReason": "Vendored copy (.agents/skills) — shared by {{agents}}",
+      "commitHint": "Commit .agents/skills so everyone who clones the project gets these files.",
+      "windowsNote": "Windows: agent links need Developer Mode. With git core.symlinks=false, links check out as plain files; delete them and apply agents again."
     }
   },
   "presetActions": {
