@@ -13,9 +13,12 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { listen } from "@tauri-apps/api/event";
 import { cn } from "../../utils";
 import * as api from "../../lib/tauri";
+import { listenOnActiveHost } from "../../lib/hostEvents";
+import { useApp } from "../../context/AppContext";
+import { HostBadge } from "../../components/HostBadge";
+import { useRemotePickerBlock } from "../../hooks/useRemotePickerBlock";
 import {
   ACTION_BUTTON_CLASS,
   FIELD_CLASS,
@@ -26,6 +29,19 @@ import {
 
 export function LibrarySection() {
   const { t } = useTranslation();
+  const { activeHost, reconnectHost } = useApp();
+  const pickerBlock = useRemotePickerBlock();
+  // A host picks up a new library path when its session starts again.
+  const announceRepoPathChange = () => {
+    if (!activeHost) {
+      toast.info(t("settings.repoPathRestartNotice"));
+      return;
+    }
+    toast.info(t("settings.repoPathReconnectNotice", { name: activeHost.name }), {
+      duration: 10000,
+      action: { label: t("remoteSession.reconnect"), onClick: () => void reconnectHost() },
+    });
+  };
   const [syncMode, setSyncMode] = useState("symlink");
   const [defaultDeployMode, setDefaultDeployMode] = useState<api.ProjectDeployMode>("link");
   const [openingRepo, setOpeningRepo] = useState(false);
@@ -104,7 +120,7 @@ export function LibrarySection() {
       setCentralRepoPathOverride(nextPath);
       setEditingCentralRepoPath(false);
       toast.success(t("settings.repoPathSaved"));
-      toast.info(t("settings.repoPathRestartNotice"));
+      announceRepoPathChange();
     } catch (error) {
       toast.error(String(error));
     } finally {
@@ -121,7 +137,7 @@ export function LibrarySection() {
       setCentralRepoPathInput(nextPath);
       setEditingCentralRepoPath(false);
       toast.success(t("settings.repoPathReset"));
-      toast.info(t("settings.repoPathRestartNotice"));
+      announceRepoPathChange();
     } catch (error) {
       toast.error(String(error));
     } finally {
@@ -146,7 +162,7 @@ export function LibrarySection() {
   // avoids a follow-up DB roundtrip.
   useEffect(() => {
     type AutoUpdatedPayload = { ran_at?: string };
-    const unlistenPromise = listen<AutoUpdatedPayload>("skills-auto-updated", (event) => {
+    const unlistenPromise = listenOnActiveHost<AutoUpdatedPayload>("skills-auto-updated", (event) => {
       const ranAt = event.payload?.ran_at;
       if (ranAt) {
         setAutoUpdateLastRun(ranAt);
@@ -178,6 +194,7 @@ export function LibrarySection() {
     <section>
       <h2 className="app-section-title mb-3">
         {t("settings.categories.library")}
+        <HostBadge />
       </h2>
       <div className="app-panel overflow-hidden divide-y divide-border-faint">
         {/* Repo path */}
@@ -206,7 +223,8 @@ export function LibrarySection() {
                 <button
                   type="button"
                   onClick={() => pickDirectory(setCentralRepoPathInput)}
-                  disabled={savingCentralRepoPath}
+                  disabled={savingCentralRepoPath || !!pickerBlock}
+                  title={pickerBlock}
                   className={`${ACTION_BUTTON_CLASS} text-muted hover:text-secondary`}
                 >
                   <FolderOpen className="w-3 h-3" />
@@ -271,7 +289,8 @@ export function LibrarySection() {
             <button
               type="button"
               onClick={handleOpenRepoInFinder}
-              disabled={openingRepo}
+              disabled={openingRepo || !!activeHost}
+              title={activeHost ? t("remoteSession.finderUnavailable", { name: activeHost.name }) : undefined}
               className={cn(
                 ACTION_BUTTON_CLASS,
                 "border-accent-border bg-accent-bg text-accent",

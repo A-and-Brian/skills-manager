@@ -2,14 +2,16 @@ import { useEffect } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { StatusBanner } from "./StatusBanner";
+import { RemoteBanner } from "./RemoteBanner";
 import { CommandPalette } from "./CommandPalette";
 import { useApp } from "../context/AppContext";
 import { useTranslation } from "react-i18next";
 import { useDragWindow } from "../hooks/useDragWindow";
+import { cn } from "../utils";
 
 export function Layout() {
   const { t } = useTranslation();
-  const { appError, refreshAppData } = useApp();
+  const { appError, refreshAppData, activeHost } = useApp();
   const onDrag = useDragWindow();
   const navigate = useNavigate();
 
@@ -42,7 +44,17 @@ export function Layout() {
       />
       <Sidebar />
       <div className="relative flex min-w-[600px] flex-1 flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto px-5 pb-5 pt-[calc(28px+20px)] scrollbar-hide">
+        {activeHost ? (
+          <div className="mt-[28px]">
+            <RemoteBanner />
+          </div>
+        ) : null}
+        <div
+          className={cn(
+            "flex-1 overflow-y-auto px-5 pb-5 scrollbar-hide",
+            activeHost ? "pt-5" : "pt-[calc(28px+20px)]"
+          )}
+        >
           <div className="mx-auto flex min-h-full max-w-[1200px] flex-col gap-4">
             {appError ? (
               <StatusBanner
@@ -54,7 +66,8 @@ export function Layout() {
                 tone="danger"
               />
             ) : null}
-            <Outlet />
+            {/* Remount the page on a host switch so no view keeps the other machine's state. */}
+            <Outlet key={activeHost?.id ?? "local"} />
           </div>
         </div>
       </div>

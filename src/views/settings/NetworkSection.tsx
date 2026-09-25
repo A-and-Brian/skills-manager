@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import * as api from "../../lib/tauri";
 import { ACTION_BUTTON_CLASS, FIELD_CLASS } from "./shared";
+import { HostBadge } from "../../components/HostBadge";
 
 export function NetworkSection() {
   const { t } = useTranslation();
@@ -35,6 +36,7 @@ export function NetworkSection() {
     <section>
       <h2 className="app-section-title mb-3">
         {t("settings.proxyConfig")}
+        <HostBadge />
       </h2>
       <div className="app-panel overflow-hidden divide-y divide-border-faint">
         <div className="px-4 py-3">

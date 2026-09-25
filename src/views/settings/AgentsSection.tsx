@@ -38,6 +38,8 @@ import { ToggleSwitch } from "../../components/ToggleSwitch";
 import * as api from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/error";
 import { ACTION_BUTTON_CLASS, FIELD_CLASS, compactHomePath, pickDirectory } from "./shared";
+import { HostBadge } from "../../components/HostBadge";
+import { useRemotePickerBlock } from "../../hooks/useRemotePickerBlock";
 
 interface SortableAgentCardProps {
   agentKey: string;
@@ -115,6 +117,7 @@ function AgentGroupDnd({ items, sensors, dragLabel, onDragEnd, renderAgentCard }
 export function AgentsSection() {
   const { t } = useTranslation();
   const { tools, refreshTools } = useApp();
+  const pickerBlock = useRemotePickerBlock();
   const [togglingTools, setTogglingTools] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
   // Agent path editing
@@ -420,8 +423,9 @@ export function AgentsSection() {
             />
             <button
               onClick={() => pickDirectory(setEditingPathValue)}
-              className="shrink-0 p-1 text-muted hover:text-accent outline-none"
-              title={t("settings.selectFolder")}
+              disabled={!!pickerBlock}
+              className="shrink-0 p-1 text-muted hover:text-accent outline-none disabled:opacity-40 disabled:cursor-not-allowed"
+              title={pickerBlock ?? t("settings.selectFolder")}
             >
               <FolderOpen className="h-3 w-3" />
             </button>
@@ -544,6 +548,7 @@ export function AgentsSection() {
         <div>
           <h2 className="app-section-title">
             {t("settings.supportedAgents")} ({installedTools.length}/{tools.length})
+            <HostBadge />
           </h2>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -618,6 +623,8 @@ export function AgentsSection() {
               />
               <button
                 onClick={() => pickDirectory(setCustomPath)}
+                disabled={!!pickerBlock}
+                title={pickerBlock}
                 className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
               >
                 <FolderOpen className="w-3 h-3" />

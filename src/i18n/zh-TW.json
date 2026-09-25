@@ -770,7 +770,8 @@
     "gitErrorRejected": "遠端有新的更新，需要先合併後再同步。",
     "gitErrorUnrelatedHistories": "本機倉庫與遠端倉庫歷史不一致。請打開「修復同步設定」選擇處理方式。",
     "gitErrorNoUpstream": "尚未建立遠端追蹤關係。請打開「修復同步設定」處理。",
-    "gitErrorGeneric": "Git 操作失敗，請檢查設定中的遠端倉庫位址後重試。"
+    "gitErrorGeneric": "Git 操作失敗，請檢查設定中的遠端倉庫位址後重試。",
+    "repoPathReconnectNotice": "重新連線到 {{name}} 後，新路徑才會生效並遷移既有資料。"
   },
   "common": {
     "loading": "載入中...",
@@ -1181,5 +1182,25 @@
       "noRemoteSource": "無遠端來源",
       "writesBlocked": "在該主機的 CLI 與應用程式主版本一致之前，無法部署。"
     }
+  },
+  "hostSwitcher": {
+    "label": "機器",
+    "local": "本機",
+    "localDetail": "這台電腦",
+    "connecting": "正在連線到 {{name}}…",
+    "manage": "管理主機…",
+    "connect": "連線",
+    "disconnect": "中斷連線",
+    "connectFailed": "無法連線到 {{name}}"
+  },
+  "remoteSession": {
+    "operatingOn": "正在操作",
+    "switchToLocal": "切換到本機",
+    "lost": "與 {{name}} 的連線已中斷。",
+    "reconnect": "重新連線",
+    "pickerUnavailable": "暫不支援在 {{name}} 上選擇資料夾。",
+    "finderUnavailable": "無法在這台電腦上開啟 {{name}} 的資料夾。",
+    "backupLocalTitle": "備份依機器分別進行。",
+    "backupLocalBody": "此頁面管理這台電腦的備份。{{name}} 由自己的 Skills Manager 備份到同一個儲存庫。"
   }
 }

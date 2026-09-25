@@ -27,6 +27,7 @@ import { RenamePresetDialog } from "./RenamePresetDialog";
 import { AddProjectDialog } from "./AddProjectDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AgentIcon } from "./AgentIcon";
+import { HostSwitcher } from "./HostSwitcher";
 import * as api from "../lib/tauri";
 import { isSettingsPath } from "../views/settings/categories";
 import type { SyncHealth, ToolCategory, ToolInfo } from "../lib/tauri";
@@ -393,6 +394,7 @@ export function Sidebar() {
             {t("app.name")}
           </span>
         </div>
+        <HostSwitcher />
 
         {/* Nav */}
         <div className="px-2.5 space-y-0.5 shrink-0">

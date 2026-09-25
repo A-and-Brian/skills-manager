@@ -27,6 +27,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
+import { useRemotePickerBlock } from "../hooks/useRemotePickerBlock";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -175,7 +176,12 @@ export function MySkills() {
     closeSkillDetail,
     projects,
     refreshProjects,
+    activeHost,
   } = useApp();
+  // Backup is this computer's (it never follows a host), so its status and
+  // conflicts don't describe a remote library.
+  const onRemote = activeHost !== null;
+  const pickerBlock = useRemotePickerBlock();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [filterMode, setFilterMode] = useState<"all" | "enabled" | "available">("all");
   const [sourceFilters, setSourceFilters] = useState<Set<string>>(new Set());
@@ -232,10 +238,11 @@ export function MySkills() {
   // that jumps to the Backup page (merge-engine design §4 UI).
   const [conflictIds, setConflictIds] = useState<Set<string>>(new Set());
   useEffect(() => {
+    if (onRemote) return;
     api.gitBackupPendingConflicts()
       .then((rows) => setConflictIds(new Set(rows.map((row) => row.skill_id))))
       .catch(() => setConflictIds(new Set()));
-  }, [skills]);
+  }, [skills, onRemote]);
 
   useEffect(() => {
     Promise.all([api.getSettings(GROUP_BY_SETTING), api.getSettings(SORT_BY_SETTING)])
@@ -473,6 +480,7 @@ export function MySkills() {
   }, []);
 
   useEffect(() => {
+    if (onRemote) return;
     (async () => {
       const savedRemote = (await api.getSettings("git_backup_remote_url").catch(() => null))?.trim() || "";
       const status = await api.gitBackupStatus().catch(() => null);
@@ -481,9 +489,10 @@ export function MySkills() {
       // `.git/config` — that made a cleared URL reappear after disconnect (#260).
       setGitRemoteConfig(savedRemote);
     })();
-  }, []);
+  }, [onRemote]);
 
   useEffect(() => {
+    if (onRemote) return;
     const handleWindowFocus = () => {
       refreshGitStatus();
     };
@@ -499,14 +508,15 @@ export function MySkills() {
       window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [refreshGitStatus]);
+  }, [refreshGitStatus, onRemote]);
 
   useEffect(() => {
+    if (onRemote) return;
     const timer = window.setTimeout(() => {
       refreshGitStatusLocal();
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [skills, refreshGitStatusLocal]);
+  }, [skills, refreshGitStatusLocal, onRemote]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1340,7 +1350,7 @@ export function MySkills() {
         {/* Keep all library actions in one toolbar so they wrap together. */}
         <div className="flex items-center gap-3">
           <div className="app-segmented app-toolbar-segmented shrink-0">
-            {(() => {
+            {!onRemote && (() => {
               const mode = getGitToolbarMode();
               const meta = getGitStatusMeta(mode);
               const Icon = meta.icon;
@@ -1362,7 +1372,10 @@ export function MySkills() {
             <button
               onClick={handleCheckAllUpdates}
               disabled={checkingAll}
-              className="ml-2 mr-2 inline-flex items-center gap-1 rounded-md border-l border-border-subtle pl-4 pr-3 py-2 text-[13px] font-medium text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
+              className={cn(
+                "mr-2 inline-flex items-center gap-1 rounded-md pr-3 py-2 text-[13px] font-medium text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50",
+                onRemote ? "pl-3" : "ml-2 border-l border-border-subtle pl-4"
+              )}
             >
               <RefreshCw className={cn("h-3.5 w-3.5", checkingAll && "animate-spin")} />
               {t("mySkills.updateActions.checkAll")}
@@ -1686,7 +1699,8 @@ export function MySkills() {
                               <>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleRelinkSource(skill); }}
-                                  disabled={updatingSkillId === skill.id}
+                                  disabled={updatingSkillId === skill.id || !!pickerBlock}
+                                  title={pickerBlock}
                                   className="rounded-full border border-border-subtle px-2 py-0.5 text-[12px] font-medium text-secondary transition-colors hover:bg-surface-hover disabled:opacity-50"
                                 >
                                   {t("mySkills.updateActions.relink")}
@@ -1942,7 +1956,8 @@ export function MySkills() {
                       <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleRelinkSource(skill); }}
-                          disabled={updatingSkillId === skill.id}
+                          disabled={updatingSkillId === skill.id || !!pickerBlock}
+                          title={pickerBlock}
                           className="rounded px-2 py-0.5 text-[13px] font-medium text-secondary transition-colors hover:bg-surface-hover disabled:opacity-50"
                         >
                           {t("mySkills.updateActions.relink")}

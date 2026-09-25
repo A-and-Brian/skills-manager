@@ -32,7 +32,8 @@ import type { ScanResult, SkillsShSkill, BatchImportResult, GitPreviewResult } f
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { listen } from "@tauri-apps/api/event";
+import { listenOnActiveHost } from "../lib/hostEvents";
+import { useRemotePickerBlock } from "../hooks/useRemotePickerBlock";
 import { StatusBanner } from "../components/StatusBanner";
 import { getErrorMessage, getErrorKind } from "../lib/error";
 
@@ -45,6 +46,7 @@ const MARKET_SEARCH_CACHE_MAX_ENTRIES = 150;
 export function InstallSkills() {
   const { t } = useTranslation();
   const { refreshPresets, refreshManagedSkills, managedSkills, openSkillDetailById } = useApp();
+  const pickerBlock = useRemotePickerBlock();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<"market" | "local" | "git">("market");
@@ -362,7 +364,7 @@ export function InstallSkills() {
 
       const toastId = toast.loading(t("install.local.batchImporting"));
 
-      unlisten = await listen<{ current: number; total: number; name: string }>(
+      unlisten = await listenOnActiveHost<{ current: number; total: number; name: string }>(
         "batch-import-progress",
         (event) => {
           const { current, total, name } = event.payload;
@@ -420,7 +422,7 @@ export function InstallSkills() {
     let unlisten: (() => void) | null = null;
 
     try {
-      unlisten = await listen<{ skill_id: string; phase: string; detail?: string }>(
+      unlisten = await listenOnActiveHost<{ skill_id: string; phase: string; detail?: string }>(
         "install-progress",
         (event) => {
           if (event.payload.skill_id !== cancelKey) return;
@@ -472,7 +474,7 @@ export function InstallSkills() {
     let unlisten: (() => void) | null = null;
 
     try {
-      unlisten = await listen<{ skill_id: string; phase: string; detail?: string }>(
+      unlisten = await listenOnActiveHost<{ skill_id: string; phase: string; detail?: string }>(
         "install-progress",
         (event) => {
           if (event.payload.skill_id !== url) return;
@@ -1216,6 +1218,8 @@ export function InstallSkills() {
                   <button
                     type="button"
                     onClick={handleLocalFolderInstall}
+                    disabled={!!pickerBlock}
+                    title={pickerBlock}
                     className="app-button-primary"
                   >
                     <FolderUp className="h-4 w-4" />
@@ -1224,6 +1228,8 @@ export function InstallSkills() {
                   <button
                     type="button"
                     onClick={handleLocalFileInstall}
+                    disabled={!!pickerBlock}
+                    title={pickerBlock}
                     className="app-button-secondary bg-background"
                   >
                     <UploadCloud className="h-4 w-4" />
@@ -1232,6 +1238,8 @@ export function InstallSkills() {
                   <button
                     type="button"
                     onClick={handleBatchImportFolder}
+                    disabled={!!pickerBlock}
+                    title={pickerBlock}
                     className="app-button-secondary bg-background"
                   >
                     <FolderInput className="h-4 w-4" />
