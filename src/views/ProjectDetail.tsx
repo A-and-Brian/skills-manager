@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { useApp } from "../context/AppContext";
 import { useMultiSelect } from "../hooks/useMultiSelect";
 import { useProjectSkills } from "../hooks/useProjectSkills";
+import { useLastUsedExportAgents } from "../hooks/useLastUsedExportAgents";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { MultiSelectToolbar } from "../components/MultiSelectToolbar";
 import { BatchTagDialog } from "../components/BatchTagDialog";
@@ -40,7 +41,6 @@ import {
   groupProjectSkills,
   isCenterUpdatable,
   isProjectUpdatable,
-  parseLastUsedAgents,
   pickInitialAgents,
   type ProjectSkillGroup,
 } from "../lib/projectSkillGroups";
@@ -51,8 +51,6 @@ import type { ProjectSkill, ManagedSkill, ProjectAgentTarget } from "../lib/taur
 import { getErrorMessage } from "../lib/error";
 import { AddSkillsSheet } from "../components/AddSkillsSheet";
 import { ProjectAgentsDialog } from "../components/ProjectAgentsDialog";
-const projectLastUsedAgentsKey = (projectId: string) =>
-  `project_last_used_export_agents:${projectId}`;
 
 export function ProjectDetail() {
   const { id } = useParams({ from: "/project/$id" });
@@ -255,31 +253,7 @@ export function ProjectDetail() {
 
   const selectedExportAgents = useMemo(() => getDefaultExportAgents(exportTargets), [exportTargets]);
 
-  const [lastUsedExportAgents, setLastUsedExportAgents] = useState<string[] | null>(null);
-  useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    api.getSettings(projectLastUsedAgentsKey(id))
-      .then((raw) => {
-        if (!cancelled) setLastUsedExportAgents(parseLastUsedAgents(raw));
-      })
-      .catch(() => {
-        if (!cancelled) setLastUsedExportAgents(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
-
-  const handlePersistLastUsedAgents = useCallback(
-    (agents: string[]) => {
-      setLastUsedExportAgents(agents);
-      if (id) {
-        void api.setSettings(projectLastUsedAgentsKey(id), JSON.stringify(agents)).catch(() => {});
-      }
-    },
-    [id],
-  );
+  const { lastUsedExportAgents, handlePersistLastUsedAgents } = useLastUsedExportAgents(id);
 
   // A project that chose its agents always starts from them; the last-used
   // heuristic only stands in for projects that never chose.
