@@ -25,6 +25,7 @@ pub mod panic_log;
 pub mod path_guard;
 pub mod project_deploy;
 pub mod project_scanner;
+pub mod project_skill_match;
 pub mod remote_host;
 pub mod remote_session;
 pub mod removals;

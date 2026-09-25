@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use tauri::State;
 
 use crate::commands::projects::{
-    classify_sync_status, ensure_dir_within_root, ensure_safe_skill_relative_path,
-    source_ref_matches_skill_path, ProjectSkillDocumentDto,
+    ensure_dir_within_root, ensure_safe_skill_relative_path, ProjectSkillDocumentDto,
 };
+use crate::core::project_skill_match::{classify_sync_status, source_ref_matches_skill_path};
 use crate::core::skill_store::{SkillRecord, SkillStore, SkillTargetRecord};
 use crate::core::{
     content_hash, error::AppError, host::HostCtx, installer, project_scanner, scenario_service,

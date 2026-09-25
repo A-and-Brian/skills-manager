@@ -119,3 +119,31 @@ pub(crate) fn git(dir: &Path, args: &[&str]) {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+pub(crate) fn sample_managed_skill(
+    central_path: String,
+    content_hash: Option<String>,
+    updated_at: i64,
+) -> SkillRecord {
+    SkillRecord {
+        id: "skill-1".to_string(),
+        name: "Example Skill".to_string(),
+        description: None,
+        source_type: "local".to_string(),
+        source_ref: None,
+        source_ref_resolved: None,
+        source_subpath: None,
+        source_branch: None,
+        source_revision: None,
+        remote_revision: None,
+        central_path,
+        content_hash,
+        enabled: true,
+        created_at: 0,
+        updated_at,
+        status: "ok".to_string(),
+        update_status: "local_only".to_string(),
+        last_checked_at: None,
+        last_check_error: None,
+    }
+}
