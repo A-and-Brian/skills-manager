@@ -42,18 +42,17 @@ export interface SkillGroup {
 
 /** Which update pill a skill answers to. `null` means none (unknown / checking). */
 export function updateFilterOf(skill: ManagedSkill): LibraryUpdateFilter | null {
-  if (skill.source_type === "local" || skill.source_type === "import") return "local";
+  // A local/import skill whose source changed or went missing is checked like
+  // any other, so it must answer to those pills before its own bucket.
   switch (skill.update_status) {
     case "update_available":
       return "update_available";
     case "error":
     case "source_missing":
       return "error";
-    case "up_to_date":
-      return "up_to_date";
-    default:
-      return null;
   }
+  if (skill.source_type === "local" || skill.source_type === "import") return "local";
+  return skill.update_status === "up_to_date" ? "up_to_date" : null;
 }
 
 function agentKeysOf(skill: ManagedSkill): string[] {

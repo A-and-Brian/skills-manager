@@ -252,7 +252,7 @@ export function MySkills() {
 
   const groupLabel = (key: string) => {
     if (groupBy === "tag") return key === NO_TAG_GROUP ? t("mySkills.tags.untagged") : key;
-    if (groupBy === "source") return t(`mySkills.sourceFilter.${key}`);
+    if (groupBy === "source") return t(`mySkills.sourceFilter.${key}`, { defaultValue: key });
     return key === NOT_DEPLOYED ? t("mySkills.agentFilter.notDeployed") : getToolDisplayName(key, tools);
   };
 

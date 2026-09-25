@@ -86,6 +86,11 @@ fn run_raw(host: &RemoteHostRecord, cli_args: &[&str]) -> Result<String, AppErro
 
 fn ssh_command(host: &RemoteHostRecord, cli_args: &[&str]) -> Command {
     let mut cmd = Command::new("ssh");
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
     cmd.arg("-o")
         .arg("BatchMode=yes")
         .arg("-o")

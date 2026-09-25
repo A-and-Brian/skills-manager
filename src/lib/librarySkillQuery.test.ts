@@ -72,6 +72,9 @@ describe("filterLibrarySkills", () => {
   it("filters by update bucket, treating local sources as their own bucket", () => {
     const all = [docx, pdf, notes];
     expect(updateFilterOf(notes)).toBe("local");
+    expect(updateFilterOf({ ...notes, update_status: "update_available" })).toBe("update_available");
+    expect(updateFilterOf({ ...notes, source_type: "import", update_status: "source_missing" })).toBe("error");
+    expect(updateFilterOf({ ...notes, update_status: "local_only" })).toBe("local");
     expect(filterLibrarySkills(all, query({ updates: new Set(["update_available"]) }), displayName).map((s) => s.id)).toEqual(["pdf"]);
     expect(filterLibrarySkills(all, query({ updates: new Set(["local", "up_to_date"]) }), displayName).map((s) => s.id)).toEqual(["docx", "notes"]);
   });
