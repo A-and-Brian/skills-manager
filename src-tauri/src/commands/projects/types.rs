@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use super::read_workspace_skills;
+use super::agents_model::read_workspace_skills;
 use crate::core::project_scanner;
 use crate::core::project_skill_match::{classify_sync_status, find_best_center_match};
 use crate::core::skill_store::{ProjectRecord, SkillRecord};
