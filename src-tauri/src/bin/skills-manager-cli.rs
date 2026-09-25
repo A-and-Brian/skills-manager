@@ -7,8 +7,8 @@ use app_lib::commands::{presets as preset_cmd, skills as cmd, tools as tool_cmd}
 use app_lib::core::{
     app_state, audit_log::AuditDraft, central_repo, error::AppError, git_backup, git_fetcher,
     installer, merge, repo_lock::RepoLock, scenario_service, serve, skill_delete, skill_install,
-    skill_metadata, skill_store::SkillStore, skill_tags, skill_update, skillssh_api, sync_engine,
-    sync_metadata, tool_adapters, tool_service,
+    skill_metadata, skill_source, skill_store::SkillStore, skill_tags, skill_update, skillssh_api,
+    sync_engine, sync_metadata, tool_adapters, tool_service,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
@@ -940,7 +940,7 @@ fn run_skills(args: SkillsArgs, store: &SkillStore, json: bool) -> anyhow::Resul
             dry_run,
         } => {
             let skill = resolve_skill(store, &reference)?;
-            let report = cmd::set_git_source_internal(
+            let report = skill_source::set_git_source_internal(
                 store,
                 &skill.id,
                 &git_url,
