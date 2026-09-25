@@ -1,8 +1,10 @@
 //! Tauri commands for the managed skills library, grouped by concern.
 
+mod library;
 mod query;
 mod types;
 
+pub use library::*;
 pub use query::*;
 pub use types::*;
 
@@ -20,7 +22,6 @@ use crate::core::{
     managed_skill::{managed_skill_by_id, ManagedSkillDto},
     repo_lock::RepoLock,
     scanner,
-    skill_delete::{delete_managed_skills_by_ids, BatchDeleteSkillsResult},
     skill_install::{
         resolve_skill_dir, resolve_skillssh_install_target, store_installed_skill_unlocked,
         InstallSourceMetadata,
@@ -28,7 +29,6 @@ use crate::core::{
     skill_metadata::{self, is_valid_skill_dir},
     skill_source::git_source_from_skill,
     skill_store::SkillStore,
-    skill_tags::{delete_tag_internal, rename_tag_internal, set_skill_tags_internal},
     skill_update::{
         pending_removals_for, reimport_local_skill_internal, removal_approval_token,
         remove_path_if_exists, resync_copy_targets, staged_path_for, swap_skill_directory,
@@ -41,42 +41,6 @@ use crate::core::{
     },
     sync_metadata,
 };
-
-#[tauri::command]
-pub async fn delete_managed_skill(
-    skill_id: String,
-    ctx: State<'_, HostCtx>,
-) -> Result<(), AppError> {
-    let ctx = ctx.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || delete_managed_skill_core(&ctx, skill_id)).await?
-}
-
-pub fn delete_managed_skill_core(ctx: &HostCtx, skill_id: String) -> Result<(), AppError> {
-    let store = ctx.store.clone();
-    let result = delete_managed_skills_by_ids(&store, std::slice::from_ref(&skill_id))?;
-    if result.deleted == 0 {
-        return Err(AppError::not_found("Skill not found"));
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn delete_managed_skills(
-    skill_ids: Vec<String>,
-    ctx: State<'_, HostCtx>,
-) -> Result<BatchDeleteSkillsResult, AppError> {
-    let ctx = ctx.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || delete_managed_skills_core(&ctx, skill_ids))
-        .await?
-}
-
-pub fn delete_managed_skills_core(
-    ctx: &HostCtx,
-    skill_ids: Vec<String>,
-) -> Result<BatchDeleteSkillsResult, AppError> {
-    let store = ctx.store.clone();
-    delete_managed_skills_by_ids(&store, &skill_ids)
-}
 
 /// Append an audit log entry summarising an install attempt.
 /// `source_label` is short text identifying the source (e.g. "local", "git", "skillssh").
@@ -1062,65 +1026,6 @@ pub fn validate_clone_temp_path(temp_dir: &str) -> Result<PathBuf, AppError> {
     }
 
     Err(AppError::invalid_input("Invalid temp directory"))
-}
-
-#[tauri::command]
-pub async fn get_all_tags(ctx: State<'_, HostCtx>) -> Result<Vec<String>, AppError> {
-    let ctx = ctx.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || get_all_tags_core(&ctx)).await?
-}
-
-pub fn get_all_tags_core(ctx: &HostCtx) -> Result<Vec<String>, AppError> {
-    let store = ctx.store.clone();
-    store.get_all_tags().map_err(AppError::db)
-}
-
-#[tauri::command]
-pub async fn set_skill_tags(
-    skill_id: String,
-    tags: Vec<String>,
-    ctx: State<'_, HostCtx>,
-) -> Result<(), AppError> {
-    let ctx = ctx.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || set_skill_tags_core(&ctx, skill_id, tags)).await?
-}
-
-pub fn set_skill_tags_core(
-    ctx: &HostCtx,
-    skill_id: String,
-    tags: Vec<String>,
-) -> Result<(), AppError> {
-    let store = ctx.store.clone();
-    set_skill_tags_internal(&store, &skill_id, &tags)
-}
-
-/// Globally rename a tag across all skills (used by the tag filter bar). If the
-/// new name already exists, the tags are merged.
-#[tauri::command]
-pub async fn rename_tag(
-    old_name: String,
-    new_name: String,
-    ctx: State<'_, HostCtx>,
-) -> Result<(), AppError> {
-    let ctx = ctx.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || rename_tag_core(&ctx, old_name, new_name)).await?
-}
-
-pub fn rename_tag_core(ctx: &HostCtx, old_name: String, new_name: String) -> Result<(), AppError> {
-    let store = ctx.store.clone();
-    rename_tag_internal(&store, &old_name, &new_name).map(|_| ())
-}
-
-/// Globally delete a tag from all skills (used by the tag filter bar).
-#[tauri::command]
-pub async fn delete_tag(name: String, ctx: State<'_, HostCtx>) -> Result<(), AppError> {
-    let ctx = ctx.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || delete_tag_core(&ctx, name)).await?
-}
-
-pub fn delete_tag_core(ctx: &HostCtx, name: String) -> Result<(), AppError> {
-    let store = ctx.store.clone();
-    delete_tag_internal(&store, &name).map(|_| ())
 }
 
 #[tauri::command]
