@@ -3,7 +3,7 @@
 //
 // `changeset version` bumps package.json and writes CHANGELOG.md, but knows
 // nothing about the Tauri and Cargo manifests or the version string shown in
-// Settings. Run after it (see the `changeset:version` npm script) so a release
+// Settings. Run after it (see the `changeset:version` script) so a release
 // never ships with the app, the updater and the CLI disagreeing on a version.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,7 +11,6 @@ import path from 'node:path';
 const root = process.cwd();
 
 const packagePath = path.join(root, 'package.json');
-const packageLockPath = path.join(root, 'package-lock.json');
 const tauriConfPath = path.join(root, 'src-tauri', 'tauri.conf.json');
 const cargoTomlPath = path.join(root, 'src-tauri', 'Cargo.toml');
 const cargoLockPath = path.join(root, 'src-tauri', 'Cargo.lock');
@@ -67,13 +66,6 @@ function main() {
     throw new Error(`package.json version is not SemVer: ${version}`);
   }
 
-  // npm rewrites both of these on any install, so leaving them behind means
-  // every contributor's `npm install` produces a stray diff.
-  const packageLock = readJson(packageLockPath);
-  packageLock.version = version;
-  if (packageLock.packages?.['']) {
-    packageLock.packages[''].version = version;
-  }
   const tauriConf = readJson(tauriConfPath);
   tauriConf.version = version;
   const cargoToml = updateCargoPackageVersion(fs.readFileSync(cargoTomlPath, 'utf8'), version);
@@ -81,13 +73,12 @@ function main() {
   const en = readJson(enI18nPath);
   updateSettingsVersion(en, version, 'src/i18n/en.json');
 
-  writeJson(packageLockPath, packageLock);
   writeJson(tauriConfPath, tauriConf);
   fs.writeFileSync(cargoTomlPath, cargoToml);
   fs.writeFileSync(cargoLockPath, cargoLock);
   writeJson(enI18nPath, en);
 
-  console.log(`Synced version ${version} to package-lock.json, tauri.conf.json, Cargo.toml, Cargo.lock and en.json`);
+  console.log(`Synced version ${version} to tauri.conf.json, Cargo.toml, Cargo.lock and en.json`);
 }
 
 main();
