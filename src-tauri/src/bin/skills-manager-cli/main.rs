@@ -14,17 +14,16 @@ use clap::{Args, Parser, Subcommand};
 
 use crate::args::{
     GitArgs, PresetArgs, PresetCommand, RepoArgs, SkillsArgs, SkillsCommand, TagArgs, TagCommand,
-    ToolsArgs, ToolsCommand,
+    ToolsArgs,
 };
 use crate::output::{error_envelope, map_app_err, print_json};
 use crate::repo::{run_git, run_repo};
 use crate::reports::{
-    AdoptCandidate, AdoptReport, AgentMutationReport, CheckReport, DeploymentVerification,
-    DeprecatedEnableReport, GlobalTagReport, InstallReport, PresetAgentStatus,
-    PresetDeactivateReport, PresetDeleteReport, PresetDeploymentReport, PresetInfo,
-    PresetMembershipReport, PresetStatusReport, RemoveReport, SearchHit, SkillAgentStatus,
-    SkillDeploymentReport, SkillDetail, SkillStatusReport, SkillSummary, SyncReport, TagReport,
-    UpdateReport,
+    AdoptCandidate, AdoptReport, CheckReport, DeploymentVerification, DeprecatedEnableReport,
+    GlobalTagReport, InstallReport, PresetAgentStatus, PresetDeactivateReport, PresetDeleteReport,
+    PresetDeploymentReport, PresetInfo, PresetMembershipReport, PresetStatusReport, RemoveReport,
+    SearchHit, SkillAgentStatus, SkillDeploymentReport, SkillDetail, SkillStatusReport,
+    SkillSummary, SyncReport, TagReport, UpdateReport,
 };
 use crate::tools::run_tools;
 
@@ -2289,6 +2288,7 @@ fn resolve_scenario(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::args::ToolsCommand;
     use app_lib::core::skill_store::{ScenarioRecord, SkillRecord};
     use app_lib::core::tool_adapters::{CustomToolDef, ToolCategory};
     use std::fs;
