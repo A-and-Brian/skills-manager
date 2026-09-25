@@ -606,7 +606,7 @@ pub fn relative_link_target(link: &Path, target: &Path, root: &Path) -> Result<P
     {
         anyhow::bail!("Cannot link {:?} to {:?}", link, target);
     }
-    let mut relative: PathBuf = std::iter::repeat("..").take(link_parts.len() - 1).collect();
+    let mut relative: PathBuf = std::iter::repeat_n("..", link_parts.len() - 1).collect();
     relative.extend(target_parts);
     Ok(relative)
 }
