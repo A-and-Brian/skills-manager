@@ -13,12 +13,12 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { writeText as clipboardWriteText } from "@tauri-apps/plugin-clipboard-manager";
 import { cn } from "../../utils";
 import * as api from "../../lib/tauri";
 import { listenOnActiveHost } from "../../lib/hostEvents";
 import { useApp } from "../../context/AppContext";
 import { HostBadge } from "../../components/HostBadge";
-import { useRemotePickerBlock } from "../../hooks/useRemotePickerBlock";
 import {
   ACTION_BUTTON_CLASS,
   FIELD_CLASS,
@@ -30,7 +30,6 @@ import {
 export function LibrarySection() {
   const { t } = useTranslation();
   const { activeHost, reconnectHost } = useApp();
-  const pickerBlock = useRemotePickerBlock();
   // A host picks up a new library path when its session starts again.
   const announceRepoPathChange = () => {
     if (!activeHost) {
@@ -99,6 +98,16 @@ export function LibrarySection() {
       toast.error(t("common.error"));
     } finally {
       setOpeningRepo(false);
+    }
+  };
+
+  const handleCopyRepoPath = async () => {
+    try {
+      await clipboardWriteText(centralRepoPath);
+      toast.success(t("settings.pathCopied"));
+    } catch (error) {
+      console.error("Failed to copy the library path", error);
+      toast.error(t("common.error"));
     }
   };
 
@@ -222,9 +231,8 @@ export function LibrarySection() {
                 />
                 <button
                   type="button"
-                  onClick={() => pickDirectory(setCentralRepoPathInput)}
-                  disabled={savingCentralRepoPath || !!pickerBlock}
-                  title={pickerBlock}
+                  onClick={() => pickDirectory(setCentralRepoPathInput, centralRepoPathInput.trim())}
+                  disabled={savingCentralRepoPath}
                   className={`${ACTION_BUTTON_CLASS} text-muted hover:text-secondary`}
                 >
                   <FolderOpen className="w-3 h-3" />
@@ -286,25 +294,37 @@ export function LibrarySection() {
                 {t("settings.resetPath")}
               </button>
             )}
-            <button
-              type="button"
-              onClick={handleOpenRepoInFinder}
-              disabled={openingRepo || !!activeHost}
-              title={activeHost ? t("remoteSession.finderUnavailable", { name: activeHost.name }) : undefined}
-              className={cn(
-                ACTION_BUTTON_CLASS,
-                "border-accent-border bg-accent-bg text-accent",
-                "hover:border-accent hover:bg-accent-bg",
-                openingRepo && "cursor-wait opacity-70"
-              )}
-            >
-              {openingRepo ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <ExternalLink className="w-3 h-3" />
-              )}
-              {t("settings.openInFinder")}
-            </button>
+            {activeHost ? (
+              // Finder can't show a host's folder; copying the path is the useful part.
+              <button
+                type="button"
+                onClick={() => void handleCopyRepoPath()}
+                disabled={!centralRepoPath}
+                className={`${ACTION_BUTTON_CLASS} border-accent-border bg-accent-bg text-accent hover:border-accent hover:bg-accent-bg`}
+              >
+                <Copy className="w-3 h-3" />
+                {t("settings.copyPath")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleOpenRepoInFinder}
+                disabled={openingRepo}
+                className={cn(
+                  ACTION_BUTTON_CLASS,
+                  "border-accent-border bg-accent-bg text-accent",
+                  "hover:border-accent hover:bg-accent-bg",
+                  openingRepo && "cursor-wait opacity-70"
+                )}
+              >
+                {openingRepo ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <ExternalLink className="w-3 h-3" />
+                )}
+                {t("settings.openInFinder")}
+              </button>
+            )}
           </div>
           <div className="w-full text-[12px] text-muted">
             {centralRepoPathOverride

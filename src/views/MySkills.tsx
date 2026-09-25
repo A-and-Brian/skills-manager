@@ -26,8 +26,7 @@ import {
   Tag,
   Trash2,
 } from "lucide-react";
-import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
-import { useRemotePickerBlock } from "../hooks/useRemotePickerBlock";
+import { pickPath } from "../lib/pickPath";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -181,7 +180,6 @@ export function MySkills() {
   // Backup is this computer's (it never follows a host), so its status and
   // conflicts don't describe a remote library.
   const onRemote = activeHost !== null;
-  const pickerBlock = useRemotePickerBlock();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [filterMode, setFilterMode] = useState<"all" | "enabled" | "available">("all");
   const [sourceFilters, setSourceFilters] = useState<Set<string>>(new Set());
@@ -911,8 +909,8 @@ export function MySkills() {
     approvedRemovals?: string,
   ) => {
     const selected =
-      presetSource ?? (await dialogOpen({ directory: true, multiple: false }));
-    if (!selected || Array.isArray(selected)) return;
+      presetSource ?? (await pickPath({ directory: true }, { startPath: skill.source_ref ?? undefined }));
+    if (!selected) return;
 
     setUpdatingSkillId(skill.id);
     try {
@@ -1699,8 +1697,7 @@ export function MySkills() {
                               <>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleRelinkSource(skill); }}
-                                  disabled={updatingSkillId === skill.id || !!pickerBlock}
-                                  title={pickerBlock}
+                                  disabled={updatingSkillId === skill.id}
                                   className="rounded-full border border-border-subtle px-2 py-0.5 text-[12px] font-medium text-secondary transition-colors hover:bg-surface-hover disabled:opacity-50"
                                 >
                                   {t("mySkills.updateActions.relink")}
@@ -1956,8 +1953,7 @@ export function MySkills() {
                       <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleRelinkSource(skill); }}
-                          disabled={updatingSkillId === skill.id || !!pickerBlock}
-                          title={pickerBlock}
+                          disabled={updatingSkillId === skill.id}
                           className="rounded px-2 py-0.5 text-[13px] font-medium text-secondary transition-colors hover:bg-surface-hover disabled:opacity-50"
                         >
                           {t("mySkills.updateActions.relink")}

@@ -677,6 +677,8 @@
     "repoPathCustomHint": "当前使用自定义中央仓库路径",
     "changeDir": "更改目录",
     "openInFinder": "打开文件夹",
+    "copyPath": "复制路径",
+    "pathCopied": "路径已复制",
     "syncMode": "默认同步模式",
     "syncModeDesc": "推荐使用符号链接，占用空间极小且修改可实时生效。全局与项目工作区均生效；注意项目里的符号链接指向本机中央库，不会随仓库带走。",
     "defaultProjectMode": "新项目的默认模式",
@@ -1282,9 +1284,20 @@
     "switchToLocal": "切换到本机",
     "lost": "与 {{name}} 的连接已断开。",
     "reconnect": "重新连接",
-    "pickerUnavailable": "暂不支持在 {{name}} 上选择文件夹。",
-    "finderUnavailable": "无法在这台电脑上打开 {{name}} 的文件夹。",
     "backupLocalTitle": "备份按机器分别进行。",
     "backupLocalBody": "此页面管理这台电脑的备份。{{name}} 由它自己的 Skills Manager 备份到同一个仓库。"
+  },
+  "remotePicker": {
+    "titleFolder": "在 {{name}} 上选择文件夹",
+    "titleFile": "在 {{name}} 上选择文件",
+    "pathLabel": "文件夹路径",
+    "pathPlaceholder": "/path/to/folder",
+    "go": "前往",
+    "up": "上一级",
+    "loadFailed": "无法打开此文件夹。",
+    "emptyFolder": "这里没有文件夹。",
+    "emptyFile": "这里没有文件夹或匹配的文件。",
+    "chooseFileHint": "请选择一个文件。",
+    "select": "选择"
   }
 }

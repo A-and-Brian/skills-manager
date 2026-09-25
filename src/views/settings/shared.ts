@@ -1,4 +1,4 @@
-import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
+import { pickPath } from "../../lib/pickPath";
 
 export const GITHUB_URL = "https://github.com/xingkongliang/skills-manager";
 
@@ -15,9 +15,8 @@ export function compactHomePath(path: string) {
     .replace(/^[A-Za-z]:\\Users\\[^\\]+/, "~");
 }
 
-export async function pickDirectory(setter: (v: string) => void) {
-  const selected = await dialogOpen({ directory: true, multiple: false });
-  if (selected && typeof selected === "string") {
-    setter(selected);
-  }
+/** Choose a folder on the machine the app operates on; `startPath` only guides the remote browser. */
+export async function pickDirectory(setter: (v: string) => void, startPath?: string) {
+  const selected = await pickPath({ directory: true }, { startPath });
+  if (selected) setter(selected);
 }

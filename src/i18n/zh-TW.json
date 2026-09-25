@@ -628,6 +628,8 @@
     "repoPathCustomHint": "目前使用自訂中央倉庫路徑",
     "changeDir": "變更目錄",
     "openInFinder": "開啟資料夾",
+    "copyPath": "複製路徑",
+    "pathCopied": "路徑已複製",
     "syncMode": "預設同步模式",
     "syncModeDesc": "建議使用符號連結，佔用空間極小且修改可即時生效。全域與專案工作區均生效；注意專案裡的符號連結指向本機中央庫，不會隨倉庫帶走。",
     "defaultProjectMode": "新專案的預設模式",
@@ -1198,9 +1200,20 @@
     "switchToLocal": "切換到本機",
     "lost": "與 {{name}} 的連線已中斷。",
     "reconnect": "重新連線",
-    "pickerUnavailable": "暫不支援在 {{name}} 上選擇資料夾。",
-    "finderUnavailable": "無法在這台電腦上開啟 {{name}} 的資料夾。",
     "backupLocalTitle": "備份依機器分別進行。",
     "backupLocalBody": "此頁面管理這台電腦的備份。{{name}} 由自己的 Skills Manager 備份到同一個儲存庫。"
+  },
+  "remotePicker": {
+    "titleFolder": "在 {{name}} 上選擇資料夾",
+    "titleFile": "在 {{name}} 上選擇檔案",
+    "pathLabel": "資料夾路徑",
+    "pathPlaceholder": "/path/to/folder",
+    "go": "前往",
+    "up": "上一層",
+    "loadFailed": "無法開啟此資料夾。",
+    "emptyFolder": "這裡沒有資料夾。",
+    "emptyFile": "這裡沒有資料夾或符合的檔案。",
+    "chooseFileHint": "請選擇一個檔案。",
+    "select": "選擇"
   }
 }
