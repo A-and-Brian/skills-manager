@@ -13,12 +13,12 @@ use crate::skills::list::{
 use crate::skills::tags::run_tag;
 use crate::skills::update::{run_check, run_update};
 
-pub(crate) mod adopt;
+mod adopt;
 pub(crate) mod deploy;
-pub(crate) mod install;
+mod install;
 pub(crate) mod list;
-pub(crate) mod tags;
-pub(crate) mod update;
+mod tags;
+mod update;
 
 pub(crate) fn run_skills(args: SkillsArgs, store: &SkillStore, json: bool) -> anyhow::Result<()> {
     match args.command {
