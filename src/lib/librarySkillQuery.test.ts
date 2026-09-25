@@ -3,12 +3,14 @@ import type { ManagedSkill } from "./tauri";
 import {
   filterLibrarySkills,
   groupLibrarySkills,
+  libraryCreators,
   NO_TAG_GROUP,
   NOT_DEPLOYED,
   sortLibrarySkills,
   updateFilterOf,
   type LibraryQuery,
 } from "./librarySkillQuery";
+import { LOCAL_CREATOR } from "./skillCreator";
 
 const UNTAGGED = "__untagged_filter__";
 
@@ -16,6 +18,7 @@ function skill(overrides: Partial<ManagedSkill> & { id: string }): ManagedSkill 
   return {
     name: overrides.id,
     description: null,
+    author: null,
     source_type: "git",
     source_ref: null,
     source_ref_resolved: null,
@@ -49,6 +52,7 @@ function query(overrides: Partial<LibraryQuery> = {}): LibraryQuery {
     tags: new Set(),
     untaggedSentinel: UNTAGGED,
     agents: new Set(),
+    creators: new Set(),
     updates: new Set(),
     sortBy: "name",
     groupBy: "none",
@@ -61,6 +65,13 @@ const displayName = (s: ManagedSkill) => s.name;
 const docx = skill({ id: "docx", tags: ["docs", "office"], targets: [target("claude"), target("codex")], update_status: "up_to_date", updated_at: 30, created_at: 1 });
 const pdf = skill({ id: "pdf", tags: ["docs"], targets: [target("claude")], update_status: "update_available", updated_at: 10, created_at: 3 });
 const notes = skill({ id: "notes", source_type: "local", update_status: "up_to_date", updated_at: 20, created_at: 2 });
+
+const byZed = skill({ id: "zed-pdf", source_type: "skillssh", source_ref: "zed/tools/pdf" });
+const byAcme = skill({ id: "acme-lint", source_ref: "https://github.com/Acme/lint.git" });
+const byAcmeToo = skill({ id: "acme-docs", source_type: "skillssh", source_ref: "acme/docs/readme" });
+const byJane = skill({ id: "jane-notes", source_type: "local", author: "Jane" });
+const nobody = skill({ id: "scratch", source_type: "import" });
+const creatorSkills = [nobody, byZed, byJane, byAcme, byAcmeToo];
 
 describe("filterLibrarySkills", () => {
   it("filters by agent, with a bucket for undeployed skills", () => {
@@ -82,6 +93,20 @@ describe("filterLibrarySkills", () => {
   it("keeps the untagged sentinel working alongside real tags", () => {
     const all = [docx, pdf, notes];
     expect(filterLibrarySkills(all, query({ tags: new Set([UNTAGGED, "office"]) }), displayName).map((s) => s.id)).toEqual(["docx", "notes"]);
+  });
+
+  it("filters by creator: GitHub owner, frontmatter author or local", () => {
+    const ids = (creators: string[]) =>
+      filterLibrarySkills(creatorSkills, query({ creators: new Set(creators) }), displayName).map((s) => s.id);
+    expect(ids(["github.com/acme"])).toEqual(["acme-lint", "acme-docs"]);
+    expect(ids(["author:jane", LOCAL_CREATOR])).toEqual(["scratch", "jane-notes"]);
+  });
+
+  it("finds skills by searching their creator", () => {
+    const found = (search: string) =>
+      filterLibrarySkills(creatorSkills, query({ search }), displayName).map((s) => s.id);
+    expect(found("@acme")).toEqual(["acme-lint", "acme-docs"]);
+    expect(found("jane")).toEqual(["jane-notes"]);
   });
 
   it("respects preset enabled / available modes", () => {
@@ -125,12 +150,33 @@ describe("groupLibrarySkills", () => {
     ]);
   });
 
+  it("groups by creator alphabetically with local last", () => {
+    const groups = groupLibrarySkills(creatorSkills, "creator");
+    expect(groups.map((g) => [g.key, g.skills.map((s) => s.id)])).toEqual([
+      ["github.com/acme", ["acme-lint", "acme-docs"]],
+      ["author:jane", ["jane-notes"]],
+      ["github.com/zed", ["zed-pdf"]],
+      [LOCAL_CREATOR, ["scratch"]],
+    ]);
+  });
+
   it("groups by agent in order of first appearance with undeployed last", () => {
     const groups = groupLibrarySkills([notes, docx, pdf], "agent");
     expect(groups.map((g) => [g.key, g.skills.map((s) => s.id)])).toEqual([
       ["claude", ["docx", "pdf"]],
       ["codex", ["docx"]],
       [NOT_DEPLOYED, ["notes"]],
+    ]);
+  });
+});
+
+describe("libraryCreators", () => {
+  it("counts skills per creator, most first, with local last", () => {
+    expect(libraryCreators(creatorSkills).map((o) => [o.key, o.count])).toEqual([
+      ["github.com/acme", 2],
+      ["author:jane", 1],
+      ["github.com/zed", 1],
+      [LOCAL_CREATOR, 1],
     ]);
   });
 });

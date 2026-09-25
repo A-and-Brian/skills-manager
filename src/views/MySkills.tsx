@@ -42,11 +42,13 @@ import { BatchSyncAgentDialog } from "../components/BatchSyncAgentDialog";
 import { SyncDots } from "../components/SyncDots";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { CardActionMenu } from "../components/CardActionMenu";
+import { CreatorBadge } from "../components/CreatorBadge";
 import * as api from "../lib/tauri";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
 import {
   filterLibrarySkills,
   groupLibrarySkills,
+  libraryCreators,
   sortLibrarySkills,
   LIBRARY_GROUP_BY_OPTIONS,
   LIBRARY_SORT_BY_OPTIONS,
@@ -58,6 +60,7 @@ import {
   type LibrarySortBy,
   type LibraryUpdateFilter,
 } from "../lib/librarySkillQuery";
+import { LOCAL_CREATOR, skillCreator } from "../lib/skillCreator";
 import type {
   ManagedSkill,
   ToolInfo,
@@ -175,6 +178,7 @@ export function MySkills() {
   const [sourceFilters, setSourceFilters] = useState<Set<string>>(new Set());
   const [tagFilters, setTagFilters] = useState<Set<string>>(new Set());
   const [agentFilters, setAgentFilters] = useState<Set<string>>(new Set());
+  const [creatorFilters, setCreatorFilters] = useState<Set<string>>(new Set());
   const [updateFilters, setUpdateFilters] = useState<Set<LibraryUpdateFilter>>(new Set());
   // Group and sort are layout preferences, so they persist across launches.
   // Filter pills are per-session, like search.
@@ -309,6 +313,7 @@ export function MySkills() {
     sourceFilters.size > 0 ||
     tagFilters.size > 0 ||
     agentFilters.size > 0 ||
+    creatorFilters.size > 0 ||
     updateFilters.size > 0 ||
     filterMode !== "all";
   const clearFilters = () => {
@@ -316,6 +321,7 @@ export function MySkills() {
     setSourceFilters(new Set());
     setTagFilters(new Set());
     setAgentFilters(new Set());
+    setCreatorFilters(new Set());
     setUpdateFilters(new Set());
     setFilterMode("all");
   };
@@ -346,6 +352,7 @@ export function MySkills() {
       tags: tagFilters,
       untaggedSentinel: UNTAGGED_FILTER,
       agents: agentFilters,
+      creators: creatorFilters,
       updates: updateFilters,
       sortBy,
       groupBy,
@@ -355,8 +362,9 @@ export function MySkills() {
     };
     const displayNameOf = (skill: ManagedSkill) => skillDisplayNames.get(skill.id) || skill.name;
     return sortLibrarySkills(filterLibrarySkills(skills, query, displayNameOf), query);
-  }, [skills, skillDisplayNames, search, sourceFilters, tagFilters, agentFilters, updateFilters, sortBy, groupBy, filterMode, viewedPreset, presetSkillOrder]);
+  }, [skills, skillDisplayNames, search, sourceFilters, tagFilters, agentFilters, creatorFilters, updateFilters, sortBy, groupBy, filterMode, viewedPreset, presetSkillOrder]);
   const groups = useMemo(() => groupLibrarySkills(filtered, groupBy), [filtered, groupBy]);
+  const creatorOptions = useMemo(() => libraryCreators(skills), [skills]);
 
   const {
     isMultiSelect, setIsMultiSelect,
@@ -376,6 +384,7 @@ export function MySkills() {
       [...sourceFilters].sort(),
       [...tagFilters].sort(),
       [...agentFilters].sort(),
+      [...creatorFilters].sort(),
       [...updateFilters].sort(),
       filterMode,
       viewedPreset?.id ?? null,
@@ -1303,6 +1312,33 @@ export function MySkills() {
             {t(`mySkills.sourceFilter.${src}`)}
           </button>
         ))}
+        {creatorOptions.length >= 2 && (
+          <>
+            <span className="mx-0.5 h-3 w-px bg-border-subtle" />
+            {creatorOptions.map(({ key, creator }) => {
+              const isActive = creatorFilters.has(key);
+              const isLocal = key === LOCAL_CREATOR;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setCreatorFilters(toggleFilter(creatorFilters, key))}
+                  className={cn(
+                    "inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium transition-colors",
+                    isLocal
+                      ? isActive
+                        ? "bg-surface-active text-primary"
+                        : "border border-dashed border-border text-muted hover:text-secondary"
+                      : isActive
+                        ? "bg-accent text-white dark:bg-accent dark:text-white"
+                        : "bg-surface-hover text-muted hover:text-secondary"
+                  )}
+                >
+                  <CreatorBadge creator={creator} linked={false} className="text-inherit" />
+                </button>
+              );
+            })}
+          </>
+        )}
         {allTags.length > 0 && (
           <>
             <span className="mx-0.5 h-3 w-px bg-border-subtle" />
@@ -1483,7 +1519,14 @@ export function MySkills() {
             <section key={group.key || "all"}>
               {groupBy !== "none" && (
                 <h3 className="mb-2 flex items-baseline gap-2 text-[12px] font-semibold uppercase tracking-wide text-muted">
-                  {groupLabel(group.key)}
+                  {groupBy === "creator" ? (
+                    <CreatorBadge
+                      creator={skillCreator(group.skills[0])}
+                      className="self-center normal-case tracking-normal"
+                    />
+                  ) : (
+                    groupLabel(group.key)
+                  )}
                   <span className="font-normal text-faint">{group.skills.length}</span>
                 </h3>
               )}
@@ -1508,6 +1551,7 @@ export function MySkills() {
                   skill.update_status === "source_missing"
                   && (skill.source_type === "local" || skill.source_type === "import");
                 const displayName = skillDisplayNames.get(skill.id) || skill.name;
+                const creator = skillCreator(skill);
 
                 if (viewMode === "grid") {
                   return (
@@ -1747,6 +1791,12 @@ export function MySkills() {
                             {sourceIcon(skill.source_type)}
                             {sourceTypeLabel(skill)}
                           </span>
+                          {creator.kind !== "local" && (
+                            <>
+                              <span className="text-faint">·</span>
+                              <CreatorBadge creator={creator} />
+                            </>
+                          )}
                           {enabledInPreset && (
                             <>
                               <span className="text-faint">·</span>
@@ -1889,6 +1939,7 @@ export function MySkills() {
                         }
                         pendingKey={togglingTarget?.skillId === skill.id ? togglingTarget.tool : null}
                       />
+                      <CreatorBadge creator={creator} size="md" hideLocal className="max-w-[160px]" />
                       <span className="inline-flex items-center gap-1 text-[13px] text-muted">
                         {sourceIcon(skill.source_type)}
                         {sourceTypeLabel(skill)}

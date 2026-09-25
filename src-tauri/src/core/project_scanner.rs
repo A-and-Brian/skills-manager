@@ -24,6 +24,9 @@ pub struct ProjectSkillInfo {
     #[serde(default)]
     pub relative_path: String,
     pub description: Option<String>,
+    /// SKILL.md frontmatter author, when the skill names one.
+    #[serde(default)]
+    pub author: Option<String>,
     pub path: String,
     pub files: Vec<String>,
     pub enabled: bool,
@@ -249,6 +252,7 @@ fn read_skills_from_dir_recursive(
                 dir_name: dir_name.clone(),
                 relative_path,
                 description: meta.description,
+                author: meta.author,
                 path: path.to_string_lossy().to_string(),
                 files,
                 enabled,
