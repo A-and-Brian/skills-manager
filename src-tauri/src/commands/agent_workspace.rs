@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use tauri::State;
 
@@ -9,8 +8,8 @@ use crate::commands::projects::{
 };
 use crate::core::skill_store::{SkillRecord, SkillStore, SkillTargetRecord};
 use crate::core::{
-    content_hash, error::AppError, installer, project_scanner, scenario_service, sync_engine,
-    tool_adapters, tool_service,
+    content_hash, error::AppError, host::HostCtx, installer, project_scanner, scenario_service,
+    sync_engine, tool_adapters, tool_service,
 };
 
 fn target_path_equals_skill(target_path: &str, skill_path: &str) -> bool {
@@ -140,92 +139,115 @@ fn find_verified_center_match<'a>(
 
 #[tauri::command]
 pub async fn get_global_local_skills(
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
     agent: String,
 ) -> Result<Vec<project_scanner::ProjectSkillInfo>, AppError> {
-    let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let adapter = adapter_for_agent(&store, &agent)?;
-        let skills = read_agent_local_skills(&adapter);
-        let all_managed = store.get_all_skills().map_err(AppError::db)?;
-        let all_targets = store.get_all_targets().map_err(AppError::db)?;
-        let tags_map = store.get_tags_map().unwrap_or_default();
-        Ok(enrich_center_status(
-            skills,
-            &all_managed,
-            &all_targets,
-            &tags_map,
-        ))
-    })
-    .await?
+    let ctx = ctx.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || get_global_local_skills_core(&ctx, agent)).await?
+}
+
+pub fn get_global_local_skills_core(
+    ctx: &HostCtx,
+    agent: String,
+) -> Result<Vec<project_scanner::ProjectSkillInfo>, AppError> {
+    let store = ctx.store.clone();
+    let adapter = adapter_for_agent(&store, &agent)?;
+    let skills = read_agent_local_skills(&adapter);
+    let all_managed = store.get_all_skills().map_err(AppError::db)?;
+    let all_targets = store.get_all_targets().map_err(AppError::db)?;
+    let tags_map = store.get_tags_map().unwrap_or_default();
+    Ok(enrich_center_status(
+        skills,
+        &all_managed,
+        &all_targets,
+        &tags_map,
+    ))
 }
 
 #[tauri::command]
 pub async fn get_global_local_skill_document(
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
     agent: String,
     skill_relative_path: String,
 ) -> Result<ProjectSkillDocumentDto, AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let adapter = adapter_for_agent(&store, &agent)?;
-        ensure_safe_skill_relative_path(&skill_relative_path)?;
-
-        let skills_root = adapter.skills_dir();
-        let skill_dir = skills_root.join(&skill_relative_path);
-        ensure_agent_skill_path(&skill_dir, &skills_root)?;
-
-        let allowed_roots = vec![skills_root];
-        let candidates = ["SKILL.md", "skill.md", "CLAUDE.md", "README.md"];
-        for candidate in &candidates {
-            let file_path = skill_dir.join(candidate);
-            if !file_path.exists() {
-                continue;
-            }
-            if let Ok(meta) = std::fs::symlink_metadata(&file_path) {
-                if meta.file_type().is_symlink() {
-                    let resolved = match std::fs::canonicalize(&file_path) {
-                        Ok(path) => path,
-                        Err(_) => continue,
-                    };
-                    let in_allowed_root = allowed_roots.iter().any(|root| {
-                        std::fs::canonicalize(root)
-                            .map(|canon| resolved.starts_with(&canon))
-                            .unwrap_or(false)
-                    });
-                    if !in_allowed_root {
-                        continue;
-                    }
-                }
-            }
-            if file_path.is_file() {
-                let content = std::fs::read_to_string(&file_path)?;
-                return Ok(ProjectSkillDocumentDto {
-                    skill_name: skill_relative_path,
-                    filename: candidate.to_string(),
-                    content,
-                });
-            }
-        }
-
-        Err(AppError::not_found(
-            "No document file found in skill directory",
-        ))
+        get_global_local_skill_document_core(&ctx, agent, skill_relative_path)
     })
     .await?
 }
 
+pub fn get_global_local_skill_document_core(
+    ctx: &HostCtx,
+    agent: String,
+    skill_relative_path: String,
+) -> Result<ProjectSkillDocumentDto, AppError> {
+    let store = ctx.store.clone();
+    let adapter = adapter_for_agent(&store, &agent)?;
+    ensure_safe_skill_relative_path(&skill_relative_path)?;
+
+    let skills_root = adapter.skills_dir();
+    let skill_dir = skills_root.join(&skill_relative_path);
+    ensure_agent_skill_path(&skill_dir, &skills_root)?;
+
+    let allowed_roots = vec![skills_root];
+    let candidates = ["SKILL.md", "skill.md", "CLAUDE.md", "README.md"];
+    for candidate in &candidates {
+        let file_path = skill_dir.join(candidate);
+        if !file_path.exists() {
+            continue;
+        }
+        if let Ok(meta) = std::fs::symlink_metadata(&file_path) {
+            if meta.file_type().is_symlink() {
+                let resolved = match std::fs::canonicalize(&file_path) {
+                    Ok(path) => path,
+                    Err(_) => continue,
+                };
+                let in_allowed_root = allowed_roots.iter().any(|root| {
+                    std::fs::canonicalize(root)
+                        .map(|canon| resolved.starts_with(&canon))
+                        .unwrap_or(false)
+                });
+                if !in_allowed_root {
+                    continue;
+                }
+            }
+        }
+        if file_path.is_file() {
+            let content = std::fs::read_to_string(&file_path)?;
+            return Ok(ProjectSkillDocumentDto {
+                skill_name: skill_relative_path,
+                filename: candidate.to_string(),
+                content,
+            });
+        }
+    }
+
+    Err(AppError::not_found(
+        "No document file found in skill directory",
+    ))
+}
+
 #[tauri::command]
 pub async fn import_global_local_skill_to_center(
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
     agent: String,
     skill_relative_path: String,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        import_agent_local_skill_to_center(&store, &agent, &skill_relative_path)
+        import_global_local_skill_to_center_core(&ctx, agent, skill_relative_path)
     })
     .await?
+}
+
+pub fn import_global_local_skill_to_center_core(
+    ctx: &HostCtx,
+    agent: String,
+    skill_relative_path: String,
+) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    import_agent_local_skill_to_center(&store, &agent, &skill_relative_path)
 }
 
 fn import_agent_local_skill_to_center(
@@ -591,15 +613,24 @@ pub fn backfill_stranded_agent_targets(store: &SkillStore) -> usize {
 
 #[tauri::command]
 pub async fn update_global_local_skill_from_center(
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
     agent: String,
     skill_relative_path: String,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        update_agent_local_skill_from_center(&store, &agent, &skill_relative_path)
+        update_global_local_skill_from_center_core(&ctx, agent, skill_relative_path)
     })
     .await?
+}
+
+pub fn update_global_local_skill_from_center_core(
+    ctx: &HostCtx,
+    agent: String,
+    skill_relative_path: String,
+) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    update_agent_local_skill_from_center(&store, &agent, &skill_relative_path)
 }
 
 fn update_agent_local_skill_from_center(
@@ -646,15 +677,24 @@ fn update_agent_local_skill_from_center(
 
 #[tauri::command]
 pub async fn delete_global_local_skill(
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
     agent: String,
     skill_relative_path: String,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        delete_agent_local_skill(&store, &agent, &skill_relative_path)
+        delete_global_local_skill_core(&ctx, agent, skill_relative_path)
     })
     .await?
+}
+
+pub fn delete_global_local_skill_core(
+    ctx: &HostCtx,
+    agent: String,
+    skill_relative_path: String,
+) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    delete_agent_local_skill(&store, &agent, &skill_relative_path)
 }
 
 fn delete_agent_local_skill(

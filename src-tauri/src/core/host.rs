@@ -43,6 +43,18 @@ impl HostEvents for NoopEvents {
     fn emit(&self, _event: &str, _payload: Value) {}
 }
 
+/// Events kept for a test to inspect.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct RecordingEvents(pub std::sync::Mutex<Vec<(String, Value)>>);
+
+#[cfg(test)]
+impl HostEvents for RecordingEvents {
+    fn emit(&self, event: &str, payload: Value) {
+        self.0.lock().unwrap().push((event.to_string(), payload));
+    }
+}
+
 #[cfg(test)]
 impl HostCtx {
     pub(crate) fn for_tests(store: SkillStore, events: Arc<dyn HostEvents>) -> Self {
