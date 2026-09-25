@@ -38,6 +38,7 @@ import { TagRenameDialog } from "../components/TagRenameDialog";
 import { SkillDetailPanel } from "../components/SkillDetailPanel";
 import { MultiSelectToolbar } from "../components/MultiSelectToolbar";
 import { BatchTagDialog } from "../components/BatchTagDialog";
+import { SortableItem, type SortableHandleProps } from "../components/SortableItem";
 import { BatchSyncAgentDialog } from "../components/BatchSyncAgentDialog";
 import { SyncDots } from "../components/SyncDots";
 import { ToggleSwitch } from "../components/ToggleSwitch";
@@ -83,67 +84,9 @@ import {
 import {
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   rectSortingStrategy,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-
-interface SortableSkillItemProps {
-  id: string;
-  disabled: boolean;
-  className?: string;
-  /** Overrides the handle styling (grid cards render it inside the status-dot slot). */
-  handleClassName?: string;
-  handleTitle?: string;
-  children: (dragHandle: React.ReactNode) => React.ReactNode;
-}
-
-function SortableSkillItem({
-  id,
-  disabled,
-  className,
-  handleClassName,
-  handleTitle,
-  children,
-}: SortableSkillItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id, disabled });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : undefined,
-  };
-
-  const handle = !disabled ? (
-    <div
-      ref={setActivatorNodeRef}
-      {...listeners}
-      onClick={(e) => e.stopPropagation()}
-      title={handleTitle}
-      className={
-        handleClassName ??
-        "flex cursor-grab items-center justify-center rounded p-1 text-faint transition-colors hover:bg-surface-hover hover:text-muted active:cursor-grabbing"
-      }
-    >
-      <GripVertical className="h-4 w-4" />
-    </div>
-  ) : null;
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} className={cn("h-full", className)}>
-      {children(handle)}
-    </div>
-  );
-}
 
 function getToolDisplayName(toolKey: string, tools: ToolInfo[]) {
   return tools.find((tool) => tool.key === toolKey)?.display_name || toolKey;
@@ -454,6 +397,16 @@ export function MySkills() {
   // Reordering only makes sense in the flat preset view: grouped cards can
   // show one skill several times, and there is no single position to save.
   const canDrag = !!viewedPreset && groupBy === "none";
+
+  const renderDragHandle = (handleProps: SortableHandleProps) => canDrag && (
+    <div
+      {...handleProps}
+      title={t("mySkills.dragToReorder")}
+      className="absolute inset-0 flex cursor-grab items-center justify-center rounded text-faint opacity-0 transition-opacity hover:text-muted group-hover:opacity-100 active:cursor-grabbing"
+    >
+      <GripVertical className="h-4 w-4" />
+    </div>
+  );
 
   const refreshGitStatus = useCallback(async () => {
     try {
@@ -1553,7 +1506,7 @@ export function MySkills() {
 
                 if (viewMode === "grid") {
                   return (
-                    <SortableSkillItem
+                    <SortableItem
                       key={skill.id}
                       id={skill.id}
                       disabled={!canDrag}
@@ -1562,10 +1515,8 @@ export function MySkills() {
                           ? "relative z-30"
                           : undefined
                       }
-                      handleTitle={t("mySkills.dragToReorder")}
-                      handleClassName="absolute inset-0 flex cursor-grab items-center justify-center rounded text-faint opacity-0 transition-opacity hover:text-muted group-hover:opacity-100 active:cursor-grabbing"
                     >
-                    {(dragHandle) => (
+                    {(handleProps) => (
                     <div
                       className={cn(
                         "app-panel group relative flex h-full cursor-pointer flex-col shadow-card transition-all hover:-translate-y-px hover:border-border hover:shadow-card-hover",
@@ -1600,7 +1551,7 @@ export function MySkills() {
                                 )}
                                 title={enabledInPreset ? t("mySkills.enabledButton") : t("mySkills.notInPreset")}
                               />
-                              {dragHandle}
+                              {renderDragHandle(handleProps)}
                             </>
                           )}
                         </div>
@@ -1819,20 +1770,18 @@ export function MySkills() {
                       </div>
                     </div>
                     )}
-                    </SortableSkillItem>
+                    </SortableItem>
                   );
                 }
 
                 return (
-                  <SortableSkillItem
+                  <SortableItem
                     key={skill.id}
                     id={skill.id}
                     disabled={!canDrag}
                     className={menuSkillId === skill.id ? "relative z-30" : undefined}
-                    handleTitle={t("mySkills.dragToReorder")}
-                    handleClassName="absolute inset-0 flex cursor-grab items-center justify-center rounded text-faint opacity-0 transition-opacity hover:text-muted group-hover:opacity-100 active:cursor-grabbing"
                   >
-                  {(dragHandle) => (
+                  {(handleProps) => (
                   <div
                     className={cn(
                       "app-panel group relative flex cursor-pointer items-center gap-3.5 rounded-xl border-transparent px-3.5 py-3 transition-all hover:border-border hover:bg-surface-hover",
@@ -1865,7 +1814,7 @@ export function MySkills() {
                             )}
                             title={enabledInPreset ? t("mySkills.enabledButton") : t("mySkills.notInPreset")}
                           />
-                          {dragHandle}
+                          {renderDragHandle(handleProps)}
                         </>
                       )}
                     </div>
@@ -2015,7 +1964,7 @@ export function MySkills() {
                     )}
                   </div>
                   )}
-                  </SortableSkillItem>
+                  </SortableItem>
                 );
               })}
               </div>
