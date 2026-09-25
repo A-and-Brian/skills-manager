@@ -35,6 +35,7 @@ import { useApp } from "../context/AppContext";
 import { useMultiSelect } from "../hooks/useMultiSelect";
 import { useLibraryViewPrefs } from "../hooks/useLibraryViewPrefs";
 import { usePresetSkillOrder } from "../hooks/usePresetSkillOrder";
+import { useGitToolbarStatus } from "../hooks/useGitToolbarStatus";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TagRenameDialog } from "../components/TagRenameDialog";
 import { SkillDetailPanel } from "../components/SkillDetailPanel";
@@ -74,7 +75,6 @@ import { creatorLabel, LOCAL_CREATOR, skillCreator } from "../lib/skillCreator";
 import type {
   ManagedSkill,
   ToolInfo,
-  GitBackupStatus,
   SkillToolToggle,
 } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
@@ -147,8 +147,6 @@ export function MySkills() {
   const [toolToggles, setToolToggles] = useState<SkillToolToggle[] | null>(null);
   const [togglingToolKey, setTogglingToolKey] = useState<string | null>(null);
   const [togglingTarget, setTogglingTarget] = useState<{ skillId: string; tool: string } | null>(null);
-  const [gitStatus, setGitStatus] = useState<GitBackupStatus | null>(null);
-  const [gitRemoteConfig, setGitRemoteConfig] = useState("");
   const [tagEditSkillId, setTagEditSkillId] = useState<string | null>(null);
   const [menuSkillId, setMenuSkillId] = useState<string | null>(null);
   const [skillToDelete, setSkillToDelete] = useState<ManagedSkill | null>(null);
@@ -156,6 +154,8 @@ export function MySkills() {
   const tagInputRef = useRef<HTMLInputElement>(null);
 
   const { presetSkillOrder, reorder: reorderPresetSkills } = usePresetSkillOrder(viewedPreset, skills);
+
+  const { gitStatus, gitRemoteConfig } = useGitToolbarStatus(onRemote, skills);
 
   const viewedPresetName = viewedPreset?.name || t("mySkills.currentPresetFallback");
 
@@ -345,67 +345,6 @@ export function MySkills() {
       <GripVertical className="h-4 w-4" />
     </div>
   );
-
-  const refreshGitStatus = useCallback(async () => {
-    try {
-      await api.gitBackupFetch().catch(() => {});
-      const status = await api.gitBackupStatus();
-      setGitStatus(status);
-    } catch {
-      // not critical
-    }
-  }, []);
-
-  // Local-only status refresh: no `git fetch`, so it can fire from
-  // dependency-driven effects without driving the file-watcher → refresh
-  // → fetch feedback loop.
-  const refreshGitStatusLocal = useCallback(async () => {
-    try {
-      const status = await api.gitBackupStatus();
-      setGitStatus(status);
-    } catch {
-      // not critical
-    }
-  }, []);
-
-  useEffect(() => {
-    if (onRemote) return;
-    (async () => {
-      const savedRemote = (await api.getSettings("git_backup_remote_url").catch(() => null))?.trim() || "";
-      const status = await api.gitBackupStatus().catch(() => null);
-      setGitStatus(status);
-      // The saved setting is the single source of truth. Do not backfill from
-      // `.git/config` — that made a cleared URL reappear after disconnect (#260).
-      setGitRemoteConfig(savedRemote);
-    })();
-  }, [onRemote]);
-
-  useEffect(() => {
-    if (onRemote) return;
-    const handleWindowFocus = () => {
-      refreshGitStatus();
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        refreshGitStatus();
-      }
-    };
-
-    window.addEventListener("focus", handleWindowFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("focus", handleWindowFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [refreshGitStatus, onRemote]);
-
-  useEffect(() => {
-    if (onRemote) return;
-    const timer = window.setTimeout(() => {
-      refreshGitStatusLocal();
-    }, 400);
-    return () => window.clearTimeout(timer);
-  }, [skills, refreshGitStatusLocal, onRemote]);
 
   useEffect(() => {
     let cancelled = false;
