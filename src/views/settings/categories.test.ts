@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSettingsPath, resolveSettingsCategory, settingsPath } from "./categories";
+import { isSettingsPath, resolveSettingsCategory, settingsLink } from "./categories";
 
 describe("resolveSettingsCategory", () => {
   it("returns a known category", () => {
@@ -15,13 +15,13 @@ describe("resolveSettingsCategory", () => {
   });
 });
 
-describe("settingsPath", () => {
+describe("settingsLink", () => {
   it("defaults to the general category", () => {
-    expect(settingsPath()).toBe("/settings/general");
+    expect(settingsLink().params).toEqual({ category: "general" });
   });
 
-  it("builds the path for a category", () => {
-    expect(settingsPath("about")).toBe("/settings/about");
+  it("targets the given category", () => {
+    expect(settingsLink("about").params).toEqual({ category: "about" });
   });
 });
 

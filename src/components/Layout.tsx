@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate } from "@tanstack/react-router";
 import { Sidebar } from "./Sidebar";
 import { StatusBanner } from "./StatusBanner";
 import { RemoteBanner } from "./RemoteBanner";
@@ -22,7 +22,7 @@ export function Layout() {
         const target = e.target as HTMLElement;
         if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
         e.preventDefault();
-        navigate("/settings");
+        navigate({ to: "/settings/{-$category}" });
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "r") {
         const target = e.target as HTMLElement;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   Layers,
@@ -29,6 +29,7 @@ import { AgentIcon } from "./AgentIcon";
 import { HostSwitcher } from "./HostSwitcher";
 import * as api from "../lib/tauri";
 import { isSettingsPath } from "../views/settings/categories";
+import { CODING_WORKSPACE_CONFIG, LOBSTER_WORKSPACE_CONFIG, type WorkspaceConfig } from "../views/workspaceConfigs";
 import type { SyncHealth, ToolCategory, ToolInfo } from "../lib/tauri";
 import { getPresetIconOption } from "../lib/presetIcons";
 
@@ -171,12 +172,12 @@ export function Sidebar() {
     { name: t("sidebar.mySkills"), path: "/my-skills", icon: Layers },
     { name: t("sidebar.installSkills"), path: "/install", icon: Download },
     { name: t("sidebar.backup"), path: "/backup", icon: CloudUpload },
-  ];
+  ] as const;
 
   const handleSwitchPreset = (id: string) => {
     setViewedPresetId(id);
     if (location.pathname !== "/my-skills") {
-      navigate("/my-skills");
+      navigate({ to: "/my-skills" });
     }
   };
 
@@ -184,7 +185,7 @@ export function Sidebar() {
     await api.createPreset(name, description, icon);
     await Promise.all([refreshPresets(), refreshManagedSkills()]);
     if (isSettingsPath(location.pathname)) {
-      navigate("/my-skills");
+      navigate({ to: "/my-skills" });
     }
     toast.success(t("preset.created"));
   };
@@ -208,7 +209,7 @@ export function Sidebar() {
     await api.deletePreset(deleteTarget.id);
     await Promise.all([refreshPresets(), refreshManagedSkills()]);
     if (isSettingsPath(location.pathname)) {
-      navigate("/my-skills");
+      navigate({ to: "/my-skills" });
     }
     toast.success(t("preset.deleted"));
   };
@@ -233,7 +234,7 @@ export function Sidebar() {
     await api.removeProject(deleteProjectTarget.id);
     await refreshProjects();
     if (location.pathname.startsWith("/project/")) {
-      navigate("/");
+      navigate({ to: "/" });
     }
     toast.success(t("project.removed"));
   };
@@ -247,6 +248,7 @@ export function Sidebar() {
     allAgentsLabel: string;
     emptyLabel: string;
     basePath: string;
+    routePath: WorkspaceConfig["routePath"];
     droppableId: string;
     tools: ToolInfo[];
     isOpen: boolean;
@@ -276,7 +278,7 @@ export function Sidebar() {
               const isActive = location.pathname === group.basePath;
               return (
                 <Link
-                  to={group.basePath}
+                  to={group.routePath}
                   className={cn(
                     "mb-0.5 flex items-center gap-2 px-2.5 py-[7px] rounded-md text-sm transition-colors outline-none",
                     isActive
@@ -322,7 +324,7 @@ export function Sidebar() {
                                 )}
                               >
                                 <button
-                                  onClick={() => navigate(`${group.basePath}/${tool.key}`)}
+                                  onClick={() => navigate({ to: group.routePath, params: { agentKey: tool.key } })}
                                   className={cn(
                                     "flex min-w-0 flex-1 items-center gap-2 px-2.5 py-[7px] text-left text-sm leading-5 outline-none",
                                     isActive ? "font-medium text-primary" : "text-tertiary group-hover:text-secondary"
@@ -548,7 +550,8 @@ export function Sidebar() {
             headingLabel: t("sidebar.globalWorkspace"),
             allAgentsLabel: t("globalWorkspace.allAgents"),
             emptyLabel: t("globalWorkspace.noAgents"),
-            basePath: "/global-workspace",
+            basePath: CODING_WORKSPACE_CONFIG.basePath,
+            routePath: CODING_WORKSPACE_CONFIG.routePath,
             droppableId: "global-workspace-tools",
             tools: orderedCodingTools,
             isOpen: globalWorkspaceOpen,
@@ -568,7 +571,8 @@ export function Sidebar() {
                 headingLabel: t("sidebar.lobsterAgents"),
                 allAgentsLabel: t("lobsterWorkspace.allAgents"),
                 emptyLabel: t("lobsterWorkspace.noAgents"),
-                basePath: "/lobster-workspace",
+                basePath: LOBSTER_WORKSPACE_CONFIG.basePath,
+                routePath: LOBSTER_WORKSPACE_CONFIG.routePath,
                 droppableId: "lobster-workspace-tools",
                 tools: orderedLobsterTools,
                 isOpen: lobsterWorkspaceOpen,
@@ -620,7 +624,7 @@ export function Sidebar() {
                                 )}
                               >
                                 <button
-                                  onClick={() => navigate(`/project/${project.id}`)}
+                                  onClick={() => navigate({ to: "/project/$id", params: { id: project.id } })}
                                   className={cn(
                                     "flex min-w-0 flex-1 items-center gap-2 px-2.5 py-[7px] text-left text-sm leading-5 outline-none",
                                     isActive ? "font-medium text-primary" : "text-tertiary group-hover:text-secondary"
@@ -709,7 +713,7 @@ export function Sidebar() {
         {/* Settings */}
         <div className="p-2.5 border-t border-border-subtle shrink-0">
           <Link
-            to="/settings"
+            to="/settings/{-$category}"
             className={cn(
               "flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-sm font-medium transition-colors outline-none",
               isSettingsPath(location.pathname)

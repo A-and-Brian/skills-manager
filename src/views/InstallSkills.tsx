@@ -30,7 +30,8 @@ import { useApp } from "../context/AppContext";
 import * as api from "../lib/tauri";
 import type { ScanResult, SkillsShSkill, BatchImportResult, GitPreviewResult } from "../lib/tauri";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import type { InstallTab } from "./installSearch";
 import { listenOnActiveHost } from "../lib/hostEvents";
 import { pickPath } from "../lib/pickPath";
 import { StatusBanner } from "../components/StatusBanner";
@@ -46,8 +47,8 @@ export function InstallSkills() {
   const { t } = useTranslation();
   const { refreshPresets, refreshManagedSkills, managedSkills, openSkillDetailById } = useApp();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"market" | "local" | "git">("market");
+  const { tab: tabParam } = useSearch({ from: "/install" });
+  const [activeTab, setActiveTab] = useState<InstallTab>("market");
   const [marketTab, setMarketTab] = useState<"hot" | "trending" | "alltime">("alltime");
   const [marketQuery, setMarketQuery] = useState("");
   const [marketSourceFilter, setMarketSourceFilter] = useState("all");
@@ -107,7 +108,7 @@ export function InstallSkills() {
     if (skill) {
       openSkillDetailById(skill.id);
     }
-    navigate("/my-skills");
+    navigate({ to: "/my-skills" });
   }, [navigate, openSkillDetailById]);
 
   const pruneMarketSearchCache = useCallback(() => {
@@ -177,15 +178,14 @@ export function InstallSkills() {
   }, [resetSourceOverflowState, sourceOverflowOpen]);
 
   useEffect(() => {
-    const tab = searchParams.get("tab");
-    if (tab === "market" || tab === "local" || tab === "git") {
-      setActiveTab(tab);
+    if (tabParam) {
+      setActiveTab(tabParam);
     }
-  }, [searchParams]);
+  }, [tabParam]);
 
-  const switchTab = (tab: "market" | "local" | "git") => {
+  const switchTab = (tab: InstallTab) => {
     setActiveTab(tab);
-    setSearchParams({ tab });
+    navigate({ to: "/install", search: { tab } });
   };
 
   const runScan = useCallback(async () => {

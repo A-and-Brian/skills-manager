@@ -8,7 +8,9 @@ import type { ToolCategory } from "../lib/tauri";
  */
 export interface WorkspaceConfig {
   category: ToolCategory;
+  /** URL of the "all agents" overview; an agent page appends `/<agentKey>`. */
   basePath: string;
+  routePath: "/global-workspace/{-$agentKey}" | "/lobster-workspace/{-$agentKey}";
   i18nKeys: {
     /** Heading shown on the "all agents" overview page. */
     title: string;
@@ -22,6 +24,7 @@ export interface WorkspaceConfig {
 export const CODING_WORKSPACE_CONFIG: WorkspaceConfig = {
   category: "coding",
   basePath: "/global-workspace",
+  routePath: "/global-workspace/{-$agentKey}",
   i18nKeys: {
     title: "globalWorkspace.title",
     noAgents: "globalWorkspace.noAgents",
@@ -32,6 +35,7 @@ export const CODING_WORKSPACE_CONFIG: WorkspaceConfig = {
 export const LOBSTER_WORKSPACE_CONFIG: WorkspaceConfig = {
   category: "lobster",
   basePath: "/lobster-workspace",
+  routePath: "/lobster-workspace/{-$agentKey}",
   i18nKeys: {
     title: "lobsterWorkspace.title",
     noAgents: "lobsterWorkspace.noAgents",

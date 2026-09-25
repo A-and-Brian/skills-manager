@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "@tanstack/react-router";
 import { Check, ChevronsUpDown, Loader2, Monitor, Server, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../utils";
 import { useApp } from "../context/AppContext";
-import { settingsPath } from "../views/settings/categories";
+import { settingsLink } from "../views/settings/categories";
 
 /** Sidebar control choosing which machine the whole app operates on. */
 export function HostSwitcher() {
@@ -121,7 +121,7 @@ export function HostSwitcher() {
             role="menuitem"
             onClick={() => {
               setOpen(false);
-              navigate(settingsPath("remote"));
+              navigate(settingsLink("remote"));
             }}
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-tertiary transition-colors hover:bg-surface-hover hover:text-secondary"
           >
