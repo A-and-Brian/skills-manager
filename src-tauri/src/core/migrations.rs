@@ -595,11 +595,19 @@ mod tests {
             ["[\"claude_code\",\"codex\"]"],
         )
         .unwrap();
-        assert_eq!(count_setting(&conn), 1, "precondition: the row must exist, or this test proves nothing");
+        assert_eq!(
+            count_setting(&conn),
+            1,
+            "precondition: the row must exist, or this test proves nothing"
+        );
 
         run_migrations(&conn).unwrap();
 
-        assert_eq!(count_setting(&conn), 0, "v7→v8 must delete the orphaned preference");
+        assert_eq!(
+            count_setting(&conn),
+            0,
+            "v7→v8 must delete the orphaned preference"
+        );
         // Unrelated settings must survive.
         conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('theme', 'dark')",
@@ -608,7 +616,9 @@ mod tests {
         .unwrap();
         run_migrations(&conn).unwrap();
         let theme: String = conn
-            .query_row("SELECT value FROM settings WHERE key = 'theme'", [], |r| r.get(0))
+            .query_row("SELECT value FROM settings WHERE key = 'theme'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(theme, "dark");
     }

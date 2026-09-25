@@ -70,7 +70,11 @@ pub struct GitBackupVersion {
 /// `.local`, which is noise for a display name).
 pub fn default_device_name() -> String {
     let host = gethostname::gethostname().to_string_lossy().to_string();
-    let host = host.strip_suffix(".local").unwrap_or(&host).trim().to_string();
+    let host = host
+        .strip_suffix(".local")
+        .unwrap_or(&host)
+        .trim()
+        .to_string();
     if host.is_empty() {
         "My Computer".to_string()
     } else {
@@ -361,7 +365,8 @@ pub(crate) fn set_remote_unlocked(skills_dir: &Path, url: &str) -> Result<()> {
     // upstream the first push must use `-u` and the "ahead" count reads 0.
     // Logging it here is what makes "Sync says up to date but remote is empty"
     // diagnosable from a single log line.
-    let upstream_tracking = run_git(skills_dir, &["rev-parse", "--abbrev-ref", "@{upstream}"]).is_ok();
+    let upstream_tracking =
+        run_git(skills_dir, &["rev-parse", "--abbrev-ref", "@{upstream}"]).is_ok();
     log::info!("git set_remote: origin configured on branch {branch}, upstream_tracking={upstream_tracking}");
 
     Ok(())
@@ -499,7 +504,10 @@ pub fn prune_hidden_refs_on_remote(skills_dir: &Path) -> Result<usize> {
         }
         let refspecs: Vec<String> = refs.iter().map(|r| format!(":{r}")).collect();
         git2_engine::push_refs(skills_dir, &refspecs, &url)?;
-        log::info!("git prune hidden refs (git2): removed {} remote ref(s)", refs.len());
+        log::info!(
+            "git prune hidden refs (git2): removed {} remote ref(s)",
+            refs.len()
+        );
         return Ok(refs.len());
     }
 
@@ -521,7 +529,10 @@ pub fn prune_hidden_refs_on_remote(skills_dir: &Path) -> Result<usize> {
     let mut args: Vec<&str> = vec!["push", "origin"];
     args.extend(refspecs.iter().map(String::as_str));
     run_git_env_checked(skills_dir, &args, &env)?;
-    log::info!("git prune hidden refs: removed {} remote ref(s)", refspecs.len());
+    log::info!(
+        "git prune hidden refs: removed {} remote ref(s)",
+        refspecs.len()
+    );
     Ok(refspecs.len())
 }
 
@@ -1074,7 +1085,10 @@ pub(crate) fn clone_into_unlocked(skills_dir: &Path, url: &str) -> Result<()> {
                 let stderr = String::from_utf8_lossy(&o.stderr);
                 let detail = stderr.trim();
                 if detail.is_empty() {
-                    Err(anyhow::anyhow!("git clone failed with exit code {}", o.status))
+                    Err(anyhow::anyhow!(
+                        "git clone failed with exit code {}",
+                        o.status
+                    ))
                 } else {
                     Err(anyhow::anyhow!(
                         "git clone failed: {}",
@@ -1243,7 +1257,8 @@ pub fn size_report(skills_dir: &Path) -> Result<BackupSizeReport> {
     })
 }
 
-const OVERSIZED_SECTION_BEGIN: &str = "# skills-manager: oversized skills excluded from backup (auto-managed)";
+const OVERSIZED_SECTION_BEGIN: &str =
+    "# skills-manager: oversized skills excluded from backup (auto-managed)";
 const OVERSIZED_SECTION_END: &str = "# skills-manager: end oversized skills";
 
 /// Escape a repo-relative path for use as a literal gitignore pattern.
@@ -1294,7 +1309,10 @@ pub(crate) fn apply_oversized_exclusions(skills_dir: &Path, limit: u64) -> Resul
             }
             lines.push(format!("/{}/", gitignore_escape(&rel)));
             if let Some(id) = id_by_path.get(&rel) {
-                lines.push(format!("/.skills-manager/skills/{}.json", gitignore_escape(id)));
+                lines.push(format!(
+                    "/.skills-manager/skills/{}.json",
+                    gitignore_escape(id)
+                ));
             }
             log::info!(
                 "backup size: excluding oversized skill '{rel}' ({} MB) from backup",
@@ -1347,7 +1365,10 @@ fn rewrite_gitignore_section(skills_dir: &Path, section_lines: &[String]) -> Res
         kept.extend(section_lines.iter().cloned());
         kept.push(OVERSIZED_SECTION_END.to_string());
     }
-    std::fs::write(&gitignore, format!("{}\n", kept.join("\n").trim_end_matches('\n')))?;
+    std::fs::write(
+        &gitignore,
+        format!("{}\n", kept.join("\n").trim_end_matches('\n')),
+    )?;
     Ok(())
 }
 
@@ -1379,9 +1400,7 @@ fn remove_tmp_metadata_files(skills_dir: &Path) {
         return;
     }
     for entry in walkdir::WalkDir::new(&meta_root).into_iter().flatten() {
-        if entry.file_type().is_file()
-            && entry.file_name().to_string_lossy().contains(".tmp.")
-        {
+        if entry.file_type().is_file() && entry.file_name().to_string_lossy().contains(".tmp.") {
             if let Err(e) = std::fs::remove_file(entry.path()) {
                 log::warn!(
                     "git commit: failed to remove temp metadata file {}: {e}",
@@ -1555,7 +1574,11 @@ fn run_git_env_checked(dir: &Path, args: &[&str], envs: &[(String, String)]) -> 
         // (commit, push -u, fetch+merge, tag, read-tree, …) goes through here,
         // so this is where "sync silently failed" becomes visible in the log.
         // Redact the args because some carry the remote URL (which may embed a token).
-        log::warn!("git failed [{}]: {}", redact_urls_in_text(&args.join(" ")), e);
+        log::warn!(
+            "git failed [{}]: {}",
+            redact_urls_in_text(&args.join(" ")),
+            e
+        );
         return Err(e);
     }
     Ok(())
@@ -1724,12 +1747,20 @@ mod tests {
         assert_eq!(sanitize_device_name("evil<\n>name"), "evilname");
         assert_eq!(sanitize_device_name("公司 Windows"), "公司 Windows");
         assert_eq!(sanitize_device_name("<>"), "");
-        assert_eq!(sanitize_device_name("a".repeat(100).as_str()).chars().count(), 64);
+        assert_eq!(
+            sanitize_device_name("a".repeat(100).as_str())
+                .chars()
+                .count(),
+            64
+        );
     }
 
     #[test]
     fn device_email_slugs_name_with_fallback() {
-        assert_eq!(device_email("MacBook Pro"), "macbook-pro@skills-manager.local");
+        assert_eq!(
+            device_email("MacBook Pro"),
+            "macbook-pro@skills-manager.local"
+        );
         assert_eq!(device_email("公司 Windows"), "windows@skills-manager.local");
         assert_eq!(device_email("公司"), "device@skills-manager.local");
     }
@@ -1797,7 +1828,10 @@ mod tests {
         std::fs::write(dir.join("docx/scripts/_native.pyd"), b"\x00ext").unwrap();
         run_git_checked(dir, &["add", "-A", "--force"]).unwrap();
         run_git_checked(dir, &["commit", "-m", "before the ignore rule"]).unwrap();
-        assert!(is_tracked(dir, "docx/scripts/__pycache__/helpers.cpython-311.pyc"));
+        assert!(is_tracked(
+            dir,
+            "docx/scripts/__pycache__/helpers.cpython-311.pyc"
+        ));
 
         commit_all_unlocked(dir, "backup").unwrap();
 
@@ -1826,7 +1860,10 @@ mod tests {
         // Init must succeed and author the initial commit as the device,
         // regardless of any global git identity on this machine.
         init_repo_unlocked(dir, "MacBook Pro").unwrap();
-        assert_eq!(run_git(dir, &["log", "-1", "--format=%an"]).unwrap(), "MacBook Pro");
+        assert_eq!(
+            run_git(dir, &["log", "-1", "--format=%an"]).unwrap(),
+            "MacBook Pro"
+        );
         assert_eq!(
             run_git(dir, &["config", "--local", "--get", "user.email"]).unwrap(),
             "macbook-pro@skills-manager.local"
@@ -1836,7 +1873,10 @@ mod tests {
         configure_device_identity(dir, "公司 Windows").unwrap();
         std::fs::write(dir.join("note.md"), "x").unwrap();
         commit_all_unlocked(dir, "backup").unwrap();
-        assert_eq!(run_git(dir, &["log", "-1", "--format=%an"]).unwrap(), "公司 Windows");
+        assert_eq!(
+            run_git(dir, &["log", "-1", "--format=%an"]).unwrap(),
+            "公司 Windows"
+        );
 
         // And the snapshot history exposes the author per entry.
         let tag = create_snapshot_tag_unlocked(dir).unwrap();
@@ -1893,8 +1933,14 @@ mod tests {
         assert_eq!(excluded, vec!["huge"]);
         let gitignore = std::fs::read_to_string(dir.join(".gitignore")).unwrap();
         assert!(gitignore.contains("/huge/"), "{gitignore}");
-        assert!(gitignore.contains("/.skills-manager/skills/skill-huge.json"), "{gitignore}");
-        assert!(!gitignore.contains("/grown/"), "tracked skill must not be excluded: {gitignore}");
+        assert!(
+            gitignore.contains("/.skills-manager/skills/skill-huge.json"),
+            "{gitignore}"
+        );
+        assert!(
+            !gitignore.contains("/grown/"),
+            "tracked skill must not be excluded: {gitignore}"
+        );
 
         // Committing keeps the oversized skill (and its metadata) out of the
         // tree while the grown-but-tracked one stays in.
@@ -1905,7 +1951,15 @@ mod tests {
         run_git_checked(dir, &["add", "-A"]).unwrap();
         run_git_checked(dir, &["commit", "-m", "test"]).unwrap();
         assert!(run_git(dir, &["cat-file", "-e", "HEAD:huge/SKILL.md"]).is_err());
-        assert!(run_git(dir, &["cat-file", "-e", "HEAD:.skills-manager/skills/skill-huge.json"]).is_err());
+        assert!(run_git(
+            dir,
+            &[
+                "cat-file",
+                "-e",
+                "HEAD:.skills-manager/skills/skill-huge.json"
+            ]
+        )
+        .is_err());
         run_git(dir, &["cat-file", "-e", "HEAD:grown/data.bin"]).unwrap();
         // Local files are untouched.
         assert!(dir.join("huge/SKILL.md").exists());
@@ -1917,8 +1971,14 @@ mod tests {
         std::fs::write(dir.join("huge/SKILL.md"), "tiny").unwrap();
         apply_oversized_exclusions(dir, 32).unwrap();
         let after = std::fs::read_to_string(dir.join(".gitignore")).unwrap();
-        assert!(!after.contains("/huge/"), "shrunk skill re-enters backup: {after}");
-        assert!(!after.contains("oversized"), "empty section is removed: {after}");
+        assert!(
+            !after.contains("/huge/"),
+            "shrunk skill re-enters backup: {after}"
+        );
+        assert!(
+            !after.contains("oversized"),
+            "empty section is removed: {after}"
+        );
     }
 
     #[test]
@@ -1948,7 +2008,11 @@ mod tests {
         init_repo_unlocked(dir, "Device A").unwrap();
         let body = run_git(dir, &["log", "-1", "--format=%B"]).unwrap();
         assert!(protocol::has_protocol_trailer(&body), "init: {body}");
-        run_git(dir, &["cat-file", "-e", "HEAD:.skills-manager/protocol.json"]).unwrap();
+        run_git(
+            dir,
+            &["cat-file", "-e", "HEAD:.skills-manager/protocol.json"],
+        )
+        .unwrap();
 
         // A pre-protocol snapshot: simulate by committing a tree with the
         // marker removed, tagging it, then restoring it.
@@ -1964,7 +2028,11 @@ mod tests {
         assert!(safety.starts_with("sm-v-"));
         let body = run_git(dir, &["log", "-1", "--format=%B"]).unwrap();
         assert!(protocol::has_protocol_trailer(&body), "restore: {body}");
-        run_git(dir, &["cat-file", "-e", "HEAD:.skills-manager/protocol.json"]).unwrap();
+        run_git(
+            dir,
+            &["cat-file", "-e", "HEAD:.skills-manager/protocol.json"],
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1980,7 +2048,11 @@ mod tests {
                 .args(args)
                 .output()
                 .unwrap();
-            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
         };
         git(&["init", "-b", "main"]);
         // Persist the identity into repo-local config so the production commit
@@ -1998,13 +2070,24 @@ mod tests {
         // A protocol-era commit follows.
         std::fs::write(dir.join("skill-a/SKILL.md"), "v2").unwrap();
         commit_all_unlocked(dir, "backup").unwrap();
-        run_git(dir, &["cat-file", "-e", "HEAD:.skills-manager/protocol.json"]).unwrap();
+        run_git(
+            dir,
+            &["cat-file", "-e", "HEAD:.skills-manager/protocol.json"],
+        )
+        .unwrap();
 
         // Restoring the pre-protocol snapshot must not resurrect a
         // marker-less tree: the restore commit re-adds protocol.json (sticky).
         restore_snapshot_version_unlocked(dir, &old_tag).unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join("skill-a/SKILL.md")).unwrap(), "v1");
-        run_git(dir, &["cat-file", "-e", "HEAD:.skills-manager/protocol.json"]).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("skill-a/SKILL.md")).unwrap(),
+            "v1"
+        );
+        run_git(
+            dir,
+            &["cat-file", "-e", "HEAD:.skills-manager/protocol.json"],
+        )
+        .unwrap();
         let body = run_git(dir, &["log", "-1", "--format=%B"]).unwrap();
         assert!(protocol::has_protocol_trailer(&body), "restore: {body}");
     }
@@ -2123,8 +2206,17 @@ mod tests {
             .success());
 
         let git = |args: &[&str]| {
-            let out = Command::new("git").arg("-C").arg(&work).args(args).output().unwrap();
-            assert!(out.status.success(), "git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr));
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(&work)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
         };
         git(&["init", "-b", "main"]);
         git(&["config", "user.email", "test@example.com"]);
@@ -2158,8 +2250,17 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
         let git = |args: &[&str]| {
-            let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
-            assert!(out.status.success(), "git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr));
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
         };
         git(&["init", "-b", "main"]);
         git(&["config", "user.email", "test@example.com"]);
@@ -2180,7 +2281,10 @@ mod tests {
         let safety_tag = restore_snapshot_version_unlocked(dir, &old_tag).unwrap();
 
         // Working tree is back at v1.
-        assert_eq!(std::fs::read_to_string(dir.join("skill-a/SKILL.md")).unwrap(), "v1");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("skill-a/SKILL.md")).unwrap(),
+            "v1"
+        );
         // The safety point is a persistent user-visible snapshot of the
         // pre-restore state, including the dirty edit.
         assert!(safety_tag.starts_with("sm-v-"));
@@ -2257,7 +2361,12 @@ mod tests {
             .success());
         run_git_checked(
             dir,
-            &["remote", "add", "origin", "https://github.com/acme/repo.git"],
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/acme/repo.git",
+            ],
         )
         .unwrap();
 
@@ -2306,7 +2415,9 @@ mod tests {
         // Pin autoSetupRemote off in the repo's local config so the plain `git push`
         // deterministically fails and we actually exercise the `-u` fallback, even on
         // a dev box whose global config sets push.autoSetupRemote=true.
-        assert!(git(&["config", "push.autoSetupRemote", "false"]).status.success());
+        assert!(git(&["config", "push.autoSetupRemote", "false"])
+            .status
+            .success());
         std::fs::write(work.join("a.txt"), "hello").unwrap();
         assert!(git(&["add", "-A"]).status.success());
         assert!(git(&["commit", "-m", "initial"]).status.success());
@@ -2359,21 +2470,41 @@ mod tests {
             &["update-ref", "refs/skills-manager/conflict/skill-x", "HEAD"],
         )
         .unwrap();
-        run_git_checked(&work, &["update-ref", "refs/skills-manager/pre-merge", "HEAD"]).unwrap();
         run_git_checked(
             &work,
-            &["push", "origin", "refs/skills-manager/conflict/skill-x", "refs/skills-manager/pre-merge"],
+            &["update-ref", "refs/skills-manager/pre-merge", "HEAD"],
+        )
+        .unwrap();
+        run_git_checked(
+            &work,
+            &[
+                "push",
+                "origin",
+                "refs/skills-manager/conflict/skill-x",
+                "refs/skills-manager/pre-merge",
+            ],
         )
         .unwrap();
         let leaked = run_git(&work, &["ls-remote", "origin", "refs/skills-manager/*"]).unwrap();
-        assert_eq!(leaked.lines().count(), 2, "setup: refs must be on the remote");
+        assert_eq!(
+            leaked.lines().count(),
+            2,
+            "setup: refs must be on the remote"
+        );
 
         let removed = prune_hidden_refs_on_remote(&work).unwrap();
         assert_eq!(removed, 2);
         let after = run_git(&work, &["ls-remote", "origin", "refs/skills-manager/*"]).unwrap();
-        assert!(after.trim().is_empty(), "remote hidden refs must be gone: {after}");
+        assert!(
+            after.trim().is_empty(),
+            "remote hidden refs must be gone: {after}"
+        );
         // Branch and local functional refs are untouched.
-        run_git(&work, &["rev-parse", "refs/skills-manager/conflict/skill-x"]).unwrap();
+        run_git(
+            &work,
+            &["rev-parse", "refs/skills-manager/conflict/skill-x"],
+        )
+        .unwrap();
         run_git(&work, &["rev-parse", "refs/skills-manager/pre-merge"]).unwrap();
         let heads = run_git(&work, &["ls-remote", "--heads", "origin"]).unwrap();
         assert!(heads.contains("refs/heads/main"));
@@ -2418,7 +2549,11 @@ mod tests {
         std::fs::write(a.join("skill.md"), "base\n").unwrap();
         assert!(git(&a, &["add", "-A"]).status.success());
         assert!(git(&a, &["commit", "-m", "base"]).status.success());
-        assert!(git(&a, &["remote", "add", "origin", remote.to_str().unwrap()]).status.success());
+        assert!(
+            git(&a, &["remote", "add", "origin", remote.to_str().unwrap()])
+                .status
+                .success()
+        );
         assert!(git(&a, &["push", "-u", "origin", "main"]).status.success());
 
         // Machine B: clone, then both sides edit the SAME line differently.
@@ -2429,7 +2564,9 @@ mod tests {
             .unwrap()
             .status
             .success());
-        assert!(git(&b, &["config", "user.email", "test@example.com"]).status.success());
+        assert!(git(&b, &["config", "user.email", "test@example.com"])
+            .status
+            .success());
         assert!(git(&b, &["config", "user.name", "Test"]).status.success());
 
         std::fs::write(a.join("skill.md"), "edited on A\n").unwrap();

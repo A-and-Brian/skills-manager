@@ -40,11 +40,7 @@ pub fn get_settings_core(ctx: &HostCtx, key: String) -> Result<Option<String>, A
 /// log file layout.
 #[tauri::command]
 pub fn log_startup_event(label: String, elapsed_ms: u64) {
-    let sanitized: String = label
-        .chars()
-        .filter(|c| !c.is_control())
-        .take(64)
-        .collect();
+    let sanitized: String = label.chars().filter(|c| !c.is_control()).take(64).collect();
     let display = if sanitized.is_empty() {
         "(empty)".to_string()
     } else {
@@ -464,7 +460,10 @@ fn collapse_consecutive_repeats(text: &str) -> String {
         let count = j - i;
         out.push(lines[i].to_string());
         if count >= 3 {
-            out.push(format!("... (line above repeated {} more times)", count - 1));
+            out.push(format!(
+                "... (line above repeated {} more times)",
+                count - 1
+            ));
         } else if count == 2 {
             out.push(lines[i + 1].to_string());
         }
@@ -721,7 +720,10 @@ pub async fn update_install_blocker() -> Result<Option<String>, AppError> {
         // Gatekeeper runs a quarantined copy from a randomized read-only mount
         // that is discarded on quit, so an update written there would vanish
         // rather than apply.
-        if exe.components().any(|c| c.as_os_str() == "AppTranslocation") {
+        if exe
+            .components()
+            .any(|c| c.as_os_str() == "AppTranslocation")
+        {
             return Ok(Some("relocate".to_string()));
         }
         // …/Foo.app/Contents/MacOS/foo — the updater swaps the bundle inside

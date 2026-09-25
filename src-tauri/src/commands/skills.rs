@@ -2042,7 +2042,11 @@ pub fn update_git_skill_internal(
         };
         let staged_guard = StagedPathGuard::new(&staged_path, install_result.is_some());
 
-        let pending = pending_removals_for(store, &skill, install_result.is_some().then_some(staged_path.as_path()))?;
+        let pending = pending_removals_for(
+            store,
+            &skill,
+            install_result.is_some().then_some(staged_path.as_path()),
+        )?;
 
         // A confirmation answers one exact question: this revision, this list
         // as shown. It closes the window while the dialog is open — a push, or
@@ -2389,12 +2393,8 @@ pub fn set_git_source_internal(
                 } else {
                     skill.remote_revision.as_deref()
                 };
-                let _ = store.update_skill_check_state(
-                    skill_id,
-                    revision,
-                    "error",
-                    Some(&e.message),
-                );
+                let _ =
+                    store.update_skill_check_state(skill_id, revision, "error", Some(&e.message));
             }
             Err(e)
         }
@@ -3635,8 +3635,7 @@ mod tests {
         fs::write(central.join("appeared-later.txt"), "also mine").unwrap();
 
         // The old approval must not cover it.
-        let second =
-            reimport_local_skill_internal(&repo.store, "skill-1", Some(&shown)).unwrap();
+        let second = reimport_local_skill_internal(&repo.store, "skill-1", Some(&shown)).unwrap();
         assert_eq!(
             second.pending_removals.len(),
             2,
@@ -3647,10 +3646,12 @@ mod tests {
 
         // Approving the list actually shown does go through.
         let approved = second.removal_approval.clone().unwrap();
-        let third =
-            reimport_local_skill_internal(&repo.store, "skill-1", Some(&approved)).unwrap();
+        let third = reimport_local_skill_internal(&repo.store, "skill-1", Some(&approved)).unwrap();
         assert!(third.pending_removals.is_empty());
-        assert!(!central.join("mine.txt").exists(), "the approved removal applies");
+        assert!(
+            !central.join("mine.txt").exists(),
+            "the approved removal applies"
+        );
     }
 
     fn write_skill_at(root: &Path, rel: &str) -> PathBuf {
@@ -4233,8 +4234,7 @@ mod tests {
         let repo = tmp.path().join("repo");
         fs::create_dir_all(&repo).unwrap();
 
-        let err =
-            resolve_skill_dir(&repo, Some(outside.to_str().unwrap()), None).unwrap_err();
+        let err = resolve_skill_dir(&repo, Some(outside.to_str().unwrap()), None).unwrap_err();
         assert!(
             err.message.contains("outside the repository"),
             "{}",

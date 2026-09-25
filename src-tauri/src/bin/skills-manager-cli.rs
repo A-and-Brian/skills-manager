@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use anyhow::{Context, anyhow, bail};
+use anyhow::{anyhow, bail, Context};
 use app_lib::commands::{presets as preset_cmd, skills as cmd, tools as tool_cmd};
 use app_lib::core::{
     app_state, audit_log::AuditDraft, central_repo, error::AppError, git_backup, git_fetcher,
@@ -1705,7 +1705,13 @@ fn run_update(
     for skill in targets {
         let report = match skill.source_type.as_str() {
             "git" | "skillssh" => {
-                match cmd::update_git_skill_internal(store, &skill.id, proxy_url.as_deref(), None, None) {
+                match cmd::update_git_skill_internal(
+                    store,
+                    &skill.id,
+                    proxy_url.as_deref(),
+                    None,
+                    None,
+                ) {
                     Ok(r) => UpdateReport {
                         skill_id: skill.id.clone(),
                         name: skill.name.clone(),
@@ -1728,28 +1734,30 @@ fn run_update(
                     },
                 }
             }
-            "local" | "import" => match cmd::reimport_local_skill_internal(store, &skill.id, None) {
-                Ok(r) => UpdateReport {
-                    skill_id: skill.id.clone(),
-                    name: skill.name.clone(),
-                    source_type: skill.source_type.clone(),
-                    refreshed: r.pending_removals.is_empty(),
-                    error: None,
-                    held_back_removals: r
-                        .pending_removals
-                        .iter()
-                        .map(|p| format!("{}: {}", p.location, p.path))
-                        .collect(),
-                },
-                Err(e) => UpdateReport {
-                    skill_id: skill.id.clone(),
-                    name: skill.name.clone(),
-                    source_type: skill.source_type.clone(),
-                    refreshed: false,
-                    error: Some(e.message.clone()),
-                    held_back_removals: Vec::new(),
-                },
-            },
+            "local" | "import" => {
+                match cmd::reimport_local_skill_internal(store, &skill.id, None) {
+                    Ok(r) => UpdateReport {
+                        skill_id: skill.id.clone(),
+                        name: skill.name.clone(),
+                        source_type: skill.source_type.clone(),
+                        refreshed: r.pending_removals.is_empty(),
+                        error: None,
+                        held_back_removals: r
+                            .pending_removals
+                            .iter()
+                            .map(|p| format!("{}: {}", p.location, p.path))
+                            .collect(),
+                    },
+                    Err(e) => UpdateReport {
+                        skill_id: skill.id.clone(),
+                        name: skill.name.clone(),
+                        source_type: skill.source_type.clone(),
+                        refreshed: false,
+                        error: Some(e.message.clone()),
+                        held_back_removals: Vec::new(),
+                    },
+                }
+            }
             other => UpdateReport {
                 skill_id: skill.id.clone(),
                 name: skill.name.clone(),

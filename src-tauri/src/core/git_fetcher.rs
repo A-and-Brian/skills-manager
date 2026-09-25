@@ -102,10 +102,7 @@ pub fn validate_git_url(url: &str) -> Result<()> {
 /// paths case-sensitively or distinguish schemes are unaffected.
 fn canonicalize_clone_url(url: &str) -> String {
     let trimmed = url.trim().trim_end_matches('/');
-    trimmed
-        .strip_suffix(".git")
-        .unwrap_or(trimmed)
-        .to_string()
+    trimmed.strip_suffix(".git").unwrap_or(trimmed).to_string()
 }
 
 /// Compute a stable cache directory name for a given clone URL. Hashes the
@@ -268,10 +265,7 @@ fn lock_repo_cache(
     Ok(RepoCacheLock { _file: file })
 }
 
-fn materialize_cached_repo(
-    cached: &Path,
-    cancel: Option<&Arc<AtomicBool>>,
-) -> Result<PathBuf> {
+fn materialize_cached_repo(cached: &Path, cancel: Option<&Arc<AtomicBool>>) -> Result<PathBuf> {
     let temp_dir =
         std::env::temp_dir().join(format!("{CLONE_TEMP_PREFIX}{}", uuid::Uuid::new_v4()));
 
@@ -1393,10 +1387,7 @@ fn parse_github_tree_url_path(url: &str) -> Option<(String, String)> {
 /// explains. Matching the longest ref across heads and tags at once would let
 /// a tag named `main/v1` swallow a URL that means branch `main` plus subpath
 /// `v1/...`.
-fn split_tree_path_with_known_refs(
-    path: &str,
-    known: &RemoteRefNames,
-) -> (String, Option<String>) {
+fn split_tree_path_with_known_refs(path: &str, known: &RemoteRefNames) -> (String, Option<String>) {
     match_known_ref(path, &known.heads)
         .or_else(|| match_known_ref(path, &known.tags))
         .unwrap_or_else(|| split_tree_branch_path(path, &[]))
@@ -1447,7 +1438,10 @@ fn split_tree_branch_path(path: &str, known_branches: &[String]) -> (String, Opt
 
     let mut parts = path.splitn(2, '/');
     let branch = parts.next().unwrap_or("").to_string();
-    let subpath = parts.next().filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let subpath = parts
+        .next()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
     (branch, subpath)
 }
 
@@ -1533,7 +1527,9 @@ fn parse_remote_ref_names(stdout: &str) -> RemoteRefNames {
     for line in stdout.lines() {
         let mut parts = line.split_whitespace();
         let Some(_sha) = parts.next() else { continue };
-        let Some(refname) = parts.next() else { continue };
+        let Some(refname) = parts.next() else {
+            continue;
+        };
         // Peeled entries name the same tag; keep one entry per ref.
         if refname.ends_with("^{}") {
             continue;
@@ -1793,7 +1789,11 @@ mod tests {
         // Asking for a skill id that doesn't exist MUST error, not silently return
         // the skills/ container (which would install the entire repo as one skill).
         let tmp = tempdir().unwrap();
-        let ask_matt = tmp.path().join("skills").join("engineering").join("ask-matt");
+        let ask_matt = tmp
+            .path()
+            .join("skills")
+            .join("engineering")
+            .join("ask-matt");
         let tdd = tmp.path().join("skills").join("engineering").join("tdd");
         fs::create_dir_all(&ask_matt).unwrap();
         fs::write(ask_matt.join("SKILL.md"), "---\nname: ask-matt\n---").unwrap();
@@ -1906,10 +1906,18 @@ mod tests {
             .expect("libgit2 must be able to clone a tag");
         let repo = git2::Repository::open(&dest).unwrap();
         assert_eq!(
-            repo.head().unwrap().peel_to_commit().unwrap().id().to_string(),
+            repo.head()
+                .unwrap()
+                .peel_to_commit()
+                .unwrap()
+                .id()
+                .to_string(),
             TAG_COMMIT
         );
-        assert!(dest.join("package.json").exists(), "working tree checked out");
+        assert!(
+            dest.join("package.json").exists(),
+            "working tree checked out"
+        );
     }
 
     #[test]
@@ -2010,9 +2018,7 @@ mod tests {
     fn a_tag_cannot_steal_a_url_that_a_branch_explains() {
         // Longest-match across heads and tags at once would read this as tag
         // `main/v1` + subpath `skills`, silently re-pointing the skill.
-        let refs = parse_remote_ref_names(
-            "aaaa\trefs/heads/main\nbbbb\trefs/tags/main/v1\n",
-        );
+        let refs = parse_remote_ref_names("aaaa\trefs/heads/main\nbbbb\trefs/tags/main/v1\n");
         let (branch, subpath) = split_tree_path_with_known_refs("main/v1/skills", &refs);
         assert_eq!(branch, "main");
         assert_eq!(subpath.as_deref(), Some("v1/skills"));
@@ -2020,9 +2026,8 @@ mod tests {
 
     #[test]
     fn a_slash_tag_still_resolves_when_no_branch_matches() {
-        let refs = parse_remote_ref_names(
-            "aaaa\trefs/heads/master\nbbbb\trefs/tags/release/v0.8.0\n",
-        );
+        let refs =
+            parse_remote_ref_names("aaaa\trefs/heads/master\nbbbb\trefs/tags/release/v0.8.0\n");
         let (branch, subpath) =
             split_tree_path_with_known_refs("release/v0.8.0/skills/herdr", &refs);
         assert_eq!(branch, "release/v0.8.0");

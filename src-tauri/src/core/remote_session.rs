@@ -305,7 +305,10 @@ fn version_mismatch(host_name: &str, remote: &str) -> AppError {
 
 /// What the CLI says it is: `skills-manager-cli 1.39.0` gives `1.39.0`.
 fn cli_version(cli: &CliCommand, host: &RemoteHostRecord) -> Option<String> {
-    let output = cli(host, &["--version"]).stdin(Stdio::null()).output().ok()?;
+    let output = cli(host, &["--version"])
+        .stdin(Stdio::null())
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -636,7 +639,10 @@ mod tests {
     fn older_cli(_: &RemoteHostRecord, args: &[&str]) -> Command {
         match args {
             ["--version"] => fake_server("echo skills-manager-cli 1.39.0", ""),
-            _ => fake_server("echo \"error: unrecognized subcommand 'serve'\" >&2; exit 2", ""),
+            _ => fake_server(
+                "echo \"error: unrecognized subcommand 'serve'\" >&2; exit 2",
+                "",
+            ),
         }
     }
 
@@ -664,7 +670,10 @@ mod tests {
 
     /// A server that answers hello and then waits for its stdin to close.
     fn serving() -> impl Fn(&RemoteHostRecord, &[&str]) -> Command + Send + Sync + 'static {
-        fake_cli(r#"printf '%s\n' "$1"; cat >/dev/null"#, &hello_line(VERSION))
+        fake_cli(
+            r#"printf '%s\n' "$1"; cat >/dev/null"#,
+            &hello_line(VERSION),
+        )
     }
 
     #[test]
@@ -726,7 +735,10 @@ mod tests {
 
     #[test]
     fn a_handshake_reports_the_version_of_a_cli_from_before_serve() {
-        assert_eq!(RemoteSession::handshake(&older_cli, &host()).unwrap(), "1.39.0");
+        assert_eq!(
+            RemoteSession::handshake(&older_cli, &host()).unwrap(),
+            "1.39.0"
+        );
     }
 
     #[test]
@@ -805,7 +817,11 @@ mod tests {
             assert_eq!(result.err().unwrap().kind, ErrorKind::NotFound);
         }
         assert_eq!(runs.load(Ordering::SeqCst), 1);
-        assert!(started.elapsed() < Duration::from_millis(1500), "{:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_millis(1500),
+            "{:?}",
+            started.elapsed()
+        );
 
         // A failure is not remembered: the next call tries again.
         sessions.session_for("h1").await.err().unwrap();
@@ -828,7 +844,11 @@ mod tests {
         let started = Instant::now();
         sessions.disconnect().await;
         let err = waiting.await.unwrap().err().unwrap();
-        assert!(started.elapsed() < Duration::from_millis(500), "{:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "{:?}",
+            started.elapsed()
+        );
         assert_eq!(err.kind, ErrorKind::Cancelled);
 
         // The abandoned connect finishes later and is closed, not kept.

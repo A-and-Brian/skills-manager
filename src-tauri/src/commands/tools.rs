@@ -531,15 +531,14 @@ mod tests {
         let store = store_with_colliding_custom_tool(tmp.path(), "deepseek_harness");
         let chosen = tmp.path().join("chosen");
 
-        apply_tool_skills_dir(
-            &store,
-            "deepseek_harness",
-            &chosen.to_string_lossy(),
-        )
-        .unwrap();
+        apply_tool_skills_dir(&store, "deepseek_harness", &chosen.to_string_lossy()).unwrap();
 
         let adapter = tool_adapters::find_adapter_with_store(&store, "deepseek_harness").unwrap();
-        assert_eq!(adapter.skills_dir(), chosen, "the edit must be what resolves");
+        assert_eq!(
+            adapter.skills_dir(),
+            chosen,
+            "the edit must be what resolves"
+        );
         assert!(adapter.has_path_override());
     }
 

@@ -37,7 +37,11 @@ fn validated_fields(
         return Err(AppError::invalid_input("Name and SSH target are required"));
     }
     let cli_path = cli_path.map(str::trim).filter(|p| !p.is_empty());
-    Ok((name.to_string(), ssh_target.to_string(), cli_path.map(str::to_string)))
+    Ok((
+        name.to_string(),
+        ssh_target.to_string(),
+        cli_path.map(str::to_string),
+    ))
 }
 
 #[tauri::command]

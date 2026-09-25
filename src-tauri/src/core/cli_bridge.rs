@@ -191,14 +191,18 @@ fn publish_from(source: &Path, app_version: &str) -> Result<PathBuf> {
     invalidate_bridge()?;
 
     let dir = bridge_dir();
-    std::fs::create_dir_all(&dir)
-        .with_context(|| format!("could not create {}", dir.display()))?;
+    std::fs::create_dir_all(&dir).with_context(|| format!("could not create {}", dir.display()))?;
 
     // Copy beside the target so the rename stays on one filesystem.
     let staged = dir.join(format!(".{BRIDGE_BIN_NAME}.staged"));
     let _ = std::fs::remove_file(&staged);
-    std::fs::copy(source, &staged)
-        .with_context(|| format!("could not copy {} to {}", source.display(), staged.display()))?;
+    std::fs::copy(source, &staged).with_context(|| {
+        format!(
+            "could not copy {} to {}",
+            source.display(),
+            staged.display()
+        )
+    })?;
 
     #[cfg(unix)]
     {
@@ -215,12 +219,8 @@ fn publish_from(source: &Path, app_version: &str) -> Result<PathBuf> {
     // On Windows this fails while the old binary is running or held open by a
     // scanner. That is the case the stamp exists for: the stale binary stays,
     // unusable, rather than being silently presented as current.
-    std::fs::rename(&staged, &target).with_context(|| {
-        format!(
-            "could not replace {} (it may be in use)",
-            target.display()
-        )
-    })?;
+    std::fs::rename(&staged, &target)
+        .with_context(|| format!("could not replace {} (it may be in use)", target.display()))?;
 
     std::fs::write(stamp_path(), app_version)
         .with_context(|| format!("could not write {}", stamp_path().display()))?;
@@ -244,7 +244,11 @@ mod tests {
     fn fake_cli(dir: &Path, reports: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let path = dir.join("skills-manager-cli");
-        std::fs::write(&path, format!("#!/bin/sh\necho 'skills-manager-cli {reports}'\n")).unwrap();
+        std::fs::write(
+            &path,
+            format!("#!/bin/sh\necho 'skills-manager-cli {reports}'\n"),
+        )
+        .unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path
     }
@@ -351,5 +355,4 @@ mod tests {
 
         central_repo::set_test_home_dir_override(None);
     }
-
 }
