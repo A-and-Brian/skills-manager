@@ -4,6 +4,7 @@
   "version": "1.40.0",
   "license": "MIT",
   "type": "module",
+  "packageManager": "pnpm@12.3.4",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
