@@ -7,8 +7,8 @@ use app_lib::commands::{presets as preset_cmd, skills as cmd, tools as tool_cmd}
 use app_lib::core::{
     app_state, audit_log::AuditDraft, central_repo, error::AppError, git_backup, git_fetcher,
     installer, merge, repo_lock::RepoLock, scenario_service, serve, skill_delete, skill_install,
-    skill_metadata, skill_store::SkillStore, skill_tags, skillssh_api, sync_engine, sync_metadata,
-    tool_adapters, tool_service,
+    skill_metadata, skill_store::SkillStore, skill_tags, skill_update, skillssh_api, sync_engine,
+    sync_metadata, tool_adapters, tool_service,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
@@ -1716,7 +1716,7 @@ fn run_update(
     for skill in targets {
         let report = match skill.source_type.as_str() {
             "git" | "skillssh" => {
-                match cmd::update_git_skill_internal(
+                match skill_update::update_git_skill_internal(
                     store,
                     &skill.id,
                     proxy_url.as_deref(),
@@ -1746,7 +1746,7 @@ fn run_update(
                 }
             }
             "local" | "import" => {
-                match cmd::reimport_local_skill_internal(store, &skill.id, None) {
+                match skill_update::reimport_local_skill_internal(store, &skill.id, None) {
                     Ok(r) => UpdateReport {
                         skill_id: skill.id.clone(),
                         name: skill.name.clone(),
