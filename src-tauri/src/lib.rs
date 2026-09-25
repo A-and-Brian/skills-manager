@@ -1119,6 +1119,8 @@ pub fn run() {
             commands::agent_workspace::import_global_local_skill_to_center,
             commands::agent_workspace::update_global_local_skill_from_center,
             commands::agent_workspace::delete_global_local_skill,
+            // Host file system
+            commands::directory::list_directory,
             // Presets
             commands::presets::get_presets,
             commands::presets::get_active_preset,

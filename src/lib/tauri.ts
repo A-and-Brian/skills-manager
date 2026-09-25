@@ -947,6 +947,24 @@ export const updateGlobalLocalSkillFromCenter = (agent: string, skillRelativePat
 export const deleteGlobalLocalSkill = (agent: string, skillRelativePath: string) =>
   invoke<void>("delete_global_local_skill", { agent, skillRelativePath });
 
+// ── Host file system ──
+
+export interface DirectoryEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+}
+
+export interface DirectoryListing {
+  path: string;
+  parent: string | null;
+  entries: DirectoryEntry[];
+}
+
+/** Folders first, then files, alphabetically; no path lists the home folder. */
+export const listDirectory = (path?: string) =>
+  invoke<DirectoryListing>("list_directory", { path: path ?? null });
+
 // ── Remote hosts ──
 
 export interface RemoteHost {

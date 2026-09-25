@@ -9,7 +9,9 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::commands::{agent_workspace, presets, scan, settings, skills, sync, tools};
+use crate::commands::{
+    agent_workspace, directory, presets, projects, scan, settings, skills, sync, tools,
+};
 use crate::core::error::AppError;
 use crate::core::host::HostCtx;
 
@@ -69,6 +71,32 @@ pub const COMMANDS: &[&str] = &[
     "import_global_local_skill_to_center",
     "update_global_local_skill_from_center",
     "delete_global_local_skill",
+    // Projects
+    "get_projects",
+    "add_project",
+    "add_linked_workspace",
+    "remove_project",
+    "reorder_projects",
+    "scan_projects",
+    "get_project_agent_targets",
+    "get_project_skills",
+    "get_project_skill_document",
+    "import_project_skill_to_center",
+    "update_project_skill_to_center",
+    "export_skill_to_project",
+    "update_project_skill_from_center",
+    "toggle_project_skill",
+    "delete_project_skill",
+    "set_project_agent_keys",
+    "preview_project_agent_change",
+    "apply_project_agent_change",
+    "set_project_skill_agents",
+    "clear_project_skill_agents",
+    "set_project_deploy_mode",
+    "preview_project_convert_to_copy",
+    "apply_project_convert_to_copy",
+    // Host file system
+    "list_directory",
     // Presets
     "get_presets",
     "get_active_preset",
@@ -316,6 +344,110 @@ pub fn dispatch(ctx: &HostCtx, command: &str, args: &Value) -> Result<Value, App
             a.req("agent")?,
             a.req("skillRelativePath")?,
         )),
+        // Projects
+        "get_projects" => reply(projects::get_projects_core(ctx)),
+        "add_project" => reply(projects::add_project_core(
+            ctx,
+            a.req("path")?,
+            a.opt("deployMode")?,
+        )),
+        "add_linked_workspace" => reply(projects::add_linked_workspace_core(
+            ctx,
+            a.req("name")?,
+            a.req("path")?,
+            a.opt("disabledPath")?,
+        )),
+        "remove_project" => reply(projects::remove_project_core(ctx, a.req("id")?)),
+        "reorder_projects" => reply(projects::reorder_projects_core(ctx, a.req("ids")?)),
+        "scan_projects" => reply(projects::scan_projects_core(ctx, a.req("root")?)),
+        "get_project_agent_targets" => reply(projects::get_project_agent_targets_core(
+            ctx,
+            a.req("projectId")?,
+        )),
+        "get_project_skills" => reply(projects::get_project_skills_core(ctx, a.req("projectId")?)),
+        "get_project_skill_document" => reply(projects::get_project_skill_document_core(
+            ctx,
+            a.req("projectId")?,
+            a.req("skillRelativePath")?,
+            a.req("agent")?,
+        )),
+        "import_project_skill_to_center" | "update_project_skill_to_center" => {
+            reply(projects::import_project_skill_to_center_core(
+                ctx,
+                a.req("projectId")?,
+                a.req("skillRelativePath")?,
+                a.req("agent")?,
+            ))
+        }
+        "export_skill_to_project" => reply(projects::export_skill_to_project_core(
+            ctx,
+            a.req("skillId")?,
+            a.req("projectId")?,
+            a.opt("agents")?,
+        )),
+        "update_project_skill_from_center" => {
+            reply(projects::update_project_skill_from_center_core(
+                ctx,
+                a.req("projectId")?,
+                a.req("skillRelativePath")?,
+                a.req("agent")?,
+            ))
+        }
+        "toggle_project_skill" => reply(projects::toggle_project_skill_core(
+            ctx,
+            a.req("projectId")?,
+            a.req("skillRelativePath")?,
+            a.req("agent")?,
+            a.req("enabled")?,
+        )),
+        "delete_project_skill" => reply(projects::delete_project_skill_core(
+            ctx,
+            a.req("projectId")?,
+            a.req("skillRelativePath")?,
+            a.req("agent")?,
+            a.opt("wholeSkill")?,
+        )),
+        "set_project_agent_keys" => reply(projects::set_project_agent_keys_core(
+            ctx,
+            a.req("projectId")?,
+            a.opt("agentKeys")?,
+        )),
+        "preview_project_agent_change" => reply(projects::preview_project_agent_change_core(
+            ctx,
+            a.req("projectId")?,
+            a.req("agentKeys")?,
+        )),
+        "apply_project_agent_change" => reply(projects::apply_project_agent_change_core(
+            ctx,
+            a.req("projectId")?,
+            a.req("agentKeys")?,
+        )),
+        "set_project_skill_agents" => reply(projects::set_project_skill_agents_core(
+            ctx,
+            a.req("projectId")?,
+            a.req("skillRelativePath")?,
+            a.req("agentKeys")?,
+        )),
+        "clear_project_skill_agents" => reply(projects::clear_project_skill_agents_core(
+            ctx,
+            a.req("projectId")?,
+            a.req("skillRelativePath")?,
+        )),
+        "set_project_deploy_mode" => reply(projects::set_project_deploy_mode_core(
+            ctx,
+            a.req("projectId")?,
+            a.req("deployMode")?,
+        )),
+        "preview_project_convert_to_copy" => reply(projects::preview_project_convert_to_copy_core(
+            ctx,
+            a.req("projectId")?,
+        )),
+        "apply_project_convert_to_copy" => reply(projects::apply_project_convert_to_copy_core(
+            ctx,
+            a.req("projectId")?,
+        )),
+        // Host file system
+        "list_directory" => reply(directory::list_directory_core(a.opt("path")?)),
         // Presets
         "get_presets" => reply(presets::get_presets_core(ctx)),
         "get_active_preset" => reply(presets::get_active_preset_core(ctx)),
@@ -558,5 +690,27 @@ mod tests {
             .map(|(_, p)| (p["current"].as_u64().unwrap(), p["total"].as_u64().unwrap()))
             .collect();
         assert_eq!(progress, vec![(1, 2), (2, 2)]);
+    }
+
+    #[test]
+    fn added_project_is_listed() {
+        let host = test_host();
+        let dir = host.tmp.path().join("my-project");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.to_string_lossy();
+
+        let added = dispatch(
+            &host.ctx,
+            "add_project",
+            &json!({ "path": path, "deployMode": null }),
+        )
+        .unwrap();
+        assert_eq!(added["name"], "my-project");
+
+        let projects = dispatch(&host.ctx, "get_projects", &json!({})).unwrap();
+        let listed = projects.as_array().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0]["id"], added["id"]);
+        assert_eq!(listed[0]["path"], path.as_ref());
     }
 }
