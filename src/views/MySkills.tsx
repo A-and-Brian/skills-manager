@@ -21,7 +21,6 @@ import {
   GripVertical,
   CircleSlash,
   Circle,
-  Pencil,
   Share2,
   Tag,
   Trash2,
@@ -38,6 +37,7 @@ import { usePresetSkillOrder } from "../hooks/usePresetSkillOrder";
 import { useGitToolbarStatus } from "../hooks/useGitToolbarStatus";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TagRenameDialog } from "../components/TagRenameDialog";
+import { TagContextMenu, type TagMenuState } from "../components/TagContextMenu";
 import { SkillDetailPanel } from "../components/SkillDetailPanel";
 import { MultiSelectToolbar } from "../components/MultiSelectToolbar";
 import { BatchTagDialog } from "../components/BatchTagDialog";
@@ -130,7 +130,7 @@ export function MySkills() {
   const [allTags, setAllTags] = useState<string[]>([]);
   // Tag management from the filter popover (#233): right-click a tag to
   // rename (dialog) or delete (confirm). Left-click stays "filter only".
-  const [tagMenu, setTagMenu] = useState<{ tag: string; x: number; y: number } | null>(null);
+  const [tagMenu, setTagMenu] = useState<TagMenuState | null>(null);
   const [tagToRename, setTagToRename] = useState<string | null>(null);
   const [tagToDelete, setTagToDelete] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -202,15 +202,8 @@ export function MySkills() {
     setTagFilters((prev) => pruneStaleTagFilters(prev, available, hasUntagged));
   }, [allTags, skills]);
 
-  // Close the tag context menu on Escape (click-outside is handled by its backdrop).
-  useEffect(() => {
-    if (!tagMenu) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setTagMenu(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [tagMenu]);
+  // Stable, so the open menu's Escape listener is not re-attached on every render.
+  const closeTagMenu = useCallback(() => setTagMenu(null), []);
 
   const toggleFilter = (set: Set<string>, value: string): Set<string> => {
     const next = new Set(set);
@@ -1865,43 +1858,12 @@ export function MySkills() {
         onRename={handleRenameTag}
       />
       {tagMenu && (
-        <>
-          {/* Backdrop closes on left- or right-click outside the menu. Explicit
-              z-index (z-40/z-50) to avoid the macOS WKWebView stacking bug. */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setTagMenu(null)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setTagMenu(null);
-            }}
-          />
-          <div
-            className="fixed z-50 min-w-[140px] overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-2xl"
-            style={{ top: tagMenu.y, left: tagMenu.x }}
-          >
-            <button
-              onClick={() => {
-                setTagToRename(tagMenu.tag);
-                setTagMenu(null);
-              }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-secondary hover:bg-surface-hover"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              {t("mySkills.tags.renameTag")}
-            </button>
-            <button
-              onClick={() => {
-                setTagToDelete(tagMenu.tag);
-                setTagMenu(null);
-              }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-red-400 hover:bg-surface-hover"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              {t("mySkills.tags.deleteTag")}
-            </button>
-          </div>
-        </>
+        <TagContextMenu
+          menu={tagMenu}
+          onClose={closeTagMenu}
+          onRename={setTagToRename}
+          onDelete={setTagToDelete}
+        />
       )}
       <BatchTagDialog
         open={batchTagDialogOpen}
