@@ -1,10 +1,9 @@
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tauri::State;
 
 use crate::core::{
-    error::AppError, installer, scanner, skill_store::SkillStore, sync_metadata, tool_adapters,
+    error::AppError, host::HostCtx, installer, scanner, sync_metadata, tool_adapters,
 };
 
 fn canonicalize_lossy(path: &str) -> PathBuf {
@@ -48,164 +47,174 @@ pub struct ScanResultDto {
 }
 
 #[tauri::command]
-pub async fn scan_local_skills(
-    store: State<'_, Arc<SkillStore>>,
-) -> Result<ScanResultDto, AppError> {
-    let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let all_targets = store.get_all_targets().map_err(AppError::db)?;
-        let managed_paths: Vec<String> =
-            all_targets.iter().map(|t| t.target_path.clone()).collect();
-        let managed_skills = store.get_all_skills().map_err(AppError::db)?;
+pub async fn scan_local_skills(ctx: State<'_, HostCtx>) -> Result<ScanResultDto, AppError> {
+    let ctx = ctx.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || scan_local_skills_core(&ctx)).await?
+}
 
-        let adapters = tool_adapters::all_tool_adapters(&store);
-        let mut plan = scanner::scan_local_skills_with_adapters(&managed_paths, &adapters)
-            .map_err(AppError::io)?;
+pub fn scan_local_skills_core(ctx: &HostCtx) -> Result<ScanResultDto, AppError> {
+    let store = ctx.store.clone();
+    let all_targets = store.get_all_targets().map_err(AppError::db)?;
+    let managed_paths: Vec<String> = all_targets.iter().map(|t| t.target_path.clone()).collect();
+    let managed_skills = store.get_all_skills().map_err(AppError::db)?;
 
-        for rec in &mut plan.discovered {
-            rec.imported_skill_id = match_imported_skill_id(rec, &managed_skills);
-        }
+    let adapters = tool_adapters::all_tool_adapters(&store);
+    let mut plan = scanner::scan_local_skills_with_adapters(&managed_paths, &adapters)
+        .map_err(AppError::io)?;
 
-        // Clear and repopulate discovered
-        store.clear_discovered().map_err(AppError::db)?;
-        for rec in &plan.discovered {
-            store.insert_discovered(rec).map_err(AppError::db)?;
-        }
+    for rec in &mut plan.discovered {
+        rec.imported_skill_id = match_imported_skill_id(rec, &managed_skills);
+    }
 
-        let all_discovered = store.get_all_discovered().map_err(AppError::db)?;
-        let groups = scanner::group_discovered(&all_discovered);
+    // Clear and repopulate discovered
+    store.clear_discovered().map_err(AppError::db)?;
+    for rec in &plan.discovered {
+        store.insert_discovered(rec).map_err(AppError::db)?;
+    }
 
-        Ok(ScanResultDto {
-            tools_scanned: plan.tools_scanned,
-            skills_found: plan.skills_found,
-            groups,
-        })
+    let all_discovered = store.get_all_discovered().map_err(AppError::db)?;
+    let groups = scanner::group_discovered(&all_discovered);
+
+    Ok(ScanResultDto {
+        tools_scanned: plan.tools_scanned,
+        skills_found: plan.skills_found,
+        groups,
     })
-    .await?
 }
 
 #[tauri::command]
 pub async fn import_existing_skill(
     source_path: String,
     name: Option<String>,
-    store: State<'_, Arc<SkillStore>>,
+    ctx: State<'_, HostCtx>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let ctx = ctx.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        sync_metadata::with_repo_lock("import existing skill", || {
-            let path = PathBuf::from(&source_path);
-            let resolved_name = installer::resolve_local_skill_name(&path, name.as_deref())?;
-
-            let result = installer::install_from_local(&path, Some(&resolved_name))?;
-
-            if store
-                .get_skill_by_central_path(&result.central_path.to_string_lossy())?
-                .is_some()
-            {
-                return Ok(());
-            }
-
-            let now = chrono::Utc::now().timestamp_millis();
-            let id = uuid::Uuid::new_v4().to_string();
-
-            let record = crate::core::skill_store::SkillRecord {
-                id: id.clone(),
-                name: result.name,
-                description: result.description,
-                source_type: "import".to_string(),
-                source_ref: Some(source_path),
-                source_ref_resolved: None,
-                source_subpath: None,
-                source_branch: None,
-                source_revision: None,
-                remote_revision: None,
-                central_path: result.central_path.to_string_lossy().to_string(),
-                content_hash: Some(result.content_hash),
-                enabled: true,
-                created_at: now,
-                updated_at: now,
-                status: "ok".to_string(),
-                update_status: "local_only".to_string(),
-                last_checked_at: Some(now),
-                last_check_error: None,
-            };
-
-            store.insert_skill(&record)?;
-
-            sync_metadata::write_all_from_db_unlocked(&store)
-        })
-        .map_err(AppError::io)?;
-
-        Ok(())
+        import_existing_skill_core(&ctx, source_path, name)
     })
     .await?
 }
 
+pub fn import_existing_skill_core(
+    ctx: &HostCtx,
+    source_path: String,
+    name: Option<String>,
+) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    sync_metadata::with_repo_lock("import existing skill", || {
+        let path = PathBuf::from(&source_path);
+        let resolved_name = installer::resolve_local_skill_name(&path, name.as_deref())?;
+
+        let result = installer::install_from_local(&path, Some(&resolved_name))?;
+
+        if store
+            .get_skill_by_central_path(&result.central_path.to_string_lossy())?
+            .is_some()
+        {
+            return Ok(());
+        }
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let id = uuid::Uuid::new_v4().to_string();
+
+        let record = crate::core::skill_store::SkillRecord {
+            id: id.clone(),
+            name: result.name,
+            description: result.description,
+            source_type: "import".to_string(),
+            source_ref: Some(source_path),
+            source_ref_resolved: None,
+            source_subpath: None,
+            source_branch: None,
+            source_revision: None,
+            remote_revision: None,
+            central_path: result.central_path.to_string_lossy().to_string(),
+            content_hash: Some(result.content_hash),
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+            status: "ok".to_string(),
+            update_status: "local_only".to_string(),
+            last_checked_at: Some(now),
+            last_check_error: None,
+        };
+
+        store.insert_skill(&record)?;
+
+        sync_metadata::write_all_from_db_unlocked(&store)
+    })
+    .map_err(AppError::io)?;
+
+    Ok(())
+}
+
 #[tauri::command]
-pub async fn import_all_discovered(store: State<'_, Arc<SkillStore>>) -> Result<(), AppError> {
-    let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        sync_metadata::with_repo_lock("import all discovered skills", || {
-            let discovered = store.get_all_discovered()?;
-            let groups = scanner::group_discovered(&discovered);
+pub async fn import_all_discovered(ctx: State<'_, HostCtx>) -> Result<(), AppError> {
+    let ctx = ctx.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || import_all_discovered_core(&ctx)).await?
+}
 
-            let mut changed = false;
+pub fn import_all_discovered_core(ctx: &HostCtx) -> Result<(), AppError> {
+    let store = ctx.store.clone();
+    sync_metadata::with_repo_lock("import all discovered skills", || {
+        let discovered = store.get_all_discovered()?;
+        let groups = scanner::group_discovered(&discovered);
 
-            for group in groups {
-                if group.imported {
-                    continue;
-                }
-                if let Some(first) = group.locations.first() {
-                    let path = PathBuf::from(&first.found_path);
+        let mut changed = false;
 
-                    if let Ok(result) = installer::install_from_local(&path, Some(&group.name)) {
-                        if store
-                            .get_skill_by_central_path(&result.central_path.to_string_lossy())?
-                            .is_some()
-                        {
-                            continue;
-                        }
+        for group in groups {
+            if group.imported {
+                continue;
+            }
+            if let Some(first) = group.locations.first() {
+                let path = PathBuf::from(&first.found_path);
 
-                        let now = chrono::Utc::now().timestamp_millis();
-                        let id = uuid::Uuid::new_v4().to_string();
-                        let record = crate::core::skill_store::SkillRecord {
-                            id: id.clone(),
-                            name: result.name,
-                            description: result.description,
-                            source_type: "import".to_string(),
-                            source_ref: Some(first.found_path.clone()),
-                            source_ref_resolved: None,
-                            source_subpath: None,
-                            source_branch: None,
-                            source_revision: None,
-                            remote_revision: None,
-                            central_path: result.central_path.to_string_lossy().to_string(),
-                            content_hash: Some(result.content_hash),
-                            enabled: true,
-                            created_at: now,
-                            updated_at: now,
-                            status: "ok".to_string(),
-                            update_status: "local_only".to_string(),
-                            last_checked_at: Some(now),
-                            last_check_error: None,
-                        };
-                        store.insert_skill(&record)?;
-                        changed = true;
+                if let Ok(result) = installer::install_from_local(&path, Some(&group.name)) {
+                    if store
+                        .get_skill_by_central_path(&result.central_path.to_string_lossy())?
+                        .is_some()
+                    {
+                        continue;
                     }
+
+                    let now = chrono::Utc::now().timestamp_millis();
+                    let id = uuid::Uuid::new_v4().to_string();
+                    let record = crate::core::skill_store::SkillRecord {
+                        id: id.clone(),
+                        name: result.name,
+                        description: result.description,
+                        source_type: "import".to_string(),
+                        source_ref: Some(first.found_path.clone()),
+                        source_ref_resolved: None,
+                        source_subpath: None,
+                        source_branch: None,
+                        source_revision: None,
+                        remote_revision: None,
+                        central_path: result.central_path.to_string_lossy().to_string(),
+                        content_hash: Some(result.content_hash),
+                        enabled: true,
+                        created_at: now,
+                        updated_at: now,
+                        status: "ok".to_string(),
+                        update_status: "local_only".to_string(),
+                        last_checked_at: Some(now),
+                        last_check_error: None,
+                    };
+                    store.insert_skill(&record)?;
+                    changed = true;
                 }
             }
+        }
 
-            if changed {
-                sync_metadata::write_all_from_db_unlocked(&store)?;
-            }
-
-            Ok(())
-        })
-        .map_err(AppError::io)?;
+        if changed {
+            sync_metadata::write_all_from_db_unlocked(&store)?;
+        }
 
         Ok(())
     })
-    .await?
+    .map_err(AppError::io)?;
+
+    Ok(())
 }
 
 #[cfg(test)]

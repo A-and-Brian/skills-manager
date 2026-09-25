@@ -809,6 +809,7 @@ pub fn run() {
     let store_for_setup = store.clone();
 
     let cancel_registry = Arc::new(core::install_cancel::InstallCancelRegistry::new());
+    let cancel_for_setup = cancel_registry.clone();
 
     let builder_start = Instant::now();
     tauri::Builder::default()
@@ -852,6 +853,11 @@ pub fn run() {
             )?;
 
             core::panic_log::install_panic_hook(app.handle().clone());
+            app.manage(core::host::HostCtx {
+                store: store_for_setup.clone(),
+                cancel: cancel_for_setup,
+                events: Arc::new(core::host::TauriEvents(app.handle().clone())),
+            });
             log::info!(
                 "app start: version={} os={} arch={}",
                 app.config().version.clone().unwrap_or_default(),
