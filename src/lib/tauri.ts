@@ -983,25 +983,9 @@ export interface RemoteHost {
 
 export interface RemoteProbe {
   version: string;
-  /** Same major version as this app; writes are refused otherwise. */
+  /** Same version as this app; connecting is refused otherwise. */
   compatible: boolean;
   app_version: string;
-}
-
-/** One entry of the remote `skills list --json`. */
-export interface RemoteSkill {
-  id: string;
-  name: string;
-  description: string | null;
-  path: string;
-  enabled: boolean;
-  tags: string[];
-  source_type: string;
-  source_ref: string | null;
-  preset_ids: string[];
-  presets: string[];
-  /** Agent keys the skill is deployed to on the remote. */
-  deployed_to: string[];
 }
 
 export const remoteHostsList = () => invoke<RemoteHost[]>("remote_hosts_list");
@@ -1018,24 +1002,6 @@ export const remoteHostRemove = (hostId: string) =>
 /** Rejects with the reason the host cannot be used (unreachable, no CLI, not POSIX). */
 export const remoteHostProbe = (hostId: string) =>
   invoke<RemoteProbe>("remote_host_probe", { hostId });
-
-export const remoteHostTools = (hostId: string) =>
-  invoke<ToolInfo[]>("remote_host_tools", { hostId });
-
-export const remoteHostSkills = (hostId: string) =>
-  invoke<RemoteSkill[]>("remote_host_skills", { hostId });
-
-export const remoteHostDeploy = (hostId: string, skillRef: string, agent: string) =>
-  invoke<unknown>("remote_host_deploy", { hostId, skillRef, agent });
-
-export const remoteHostUndeploy = (hostId: string, skillRef: string, agent: string) =>
-  invoke<unknown>("remote_host_undeploy", { hostId, skillRef, agent });
-
-export const remoteHostInstall = (hostId: string, source: string, sourceType: string) =>
-  invoke<unknown>("remote_host_install", { hostId, source, sourceType });
-
-export const remoteHostUpdateSkill = (hostId: string, skillRef: string) =>
-  invoke<unknown>("remote_host_update_skill", { hostId, skillRef });
 
 // ── Remote session (one live `serve --stdio` connection) ──
 

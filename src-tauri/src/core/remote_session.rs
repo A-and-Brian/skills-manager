@@ -21,7 +21,7 @@ use serde_json::{json, Value};
 use tokio::sync::{oneshot, watch};
 
 use super::error::AppError;
-use super::host::HostEvents;
+use super::host::{HostEvents, NoopEvents};
 use super::remote_host;
 use super::serve::{Hello, HelloLine, PROTOCOL};
 use super::skill_store::{RemoteHostRecord, SkillStore};
@@ -99,14 +99,46 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Who answered a start: a server with its hello, or a CLI from before
+/// `serve` that can only say its version.
+enum Answer {
+    Serving(Box<RemoteSession>, Hello),
+    Older(String),
+}
+
 impl RemoteSession {
-    /// Start `serve --stdio` on the host and wait for its hello. Blocks for
-    /// up to 20 s, so async callers run it on a blocking thread.
+    /// Start `serve --stdio` on the host and wait for its hello, refusing a
+    /// server of another version. Blocks for up to 20 s, so async callers
+    /// run it on a blocking thread.
     pub fn spawn(
         cli: &CliCommand,
         host: &RemoteHostRecord,
         events: Arc<dyn HostEvents>,
     ) -> Result<Self, AppError> {
+        match Self::start(cli, host, events)? {
+            Answer::Serving(session, hello) => {
+                // On a mismatch `session` is dropped here, which closes it.
+                check_hello(&hello, &host.name)?;
+                Ok(*session)
+            }
+            Answer::Older(version) => Err(version_mismatch(&host.name, &version)),
+        }
+    }
+
+    /// Start the server, read which version answers and close it again. A
+    /// different version is an answer here, not an error.
+    pub fn handshake(cli: &CliCommand, host: &RemoteHostRecord) -> Result<String, AppError> {
+        Ok(match Self::start(cli, host, Arc::new(NoopEvents))? {
+            Answer::Serving(_session, hello) => hello.version,
+            Answer::Older(version) => version,
+        })
+    }
+
+    fn start(
+        cli: &CliCommand,
+        host: &RemoteHostRecord,
+        events: Arc<dyn HostEvents>,
+    ) -> Result<Answer, AppError> {
         let mut cmd = cli(host, SERVE);
         let mut child = cmd
             .stdin(Stdio::piped())
@@ -153,7 +185,7 @@ impl RemoteSession {
                 // A CLI from before `serve` can still say which version it is.
                 if remote_host::predates_serve(code, &stderr) {
                     if let Some(version) = cli_version(cli, host) {
-                        return Err(version_mismatch(&host.name, &version));
+                        return Ok(Answer::Older(version));
                     }
                 }
                 return Err(remote_host::classify_failure(host, code, &stderr));
@@ -175,9 +207,7 @@ impl RemoteSession {
             calls,
             next_id: AtomicU64::new(1),
         };
-        // On a mismatch `session` is dropped here, which closes it.
-        check_hello(&hello, &host.name)?;
-        Ok(session)
+        Ok(Answer::Serving(Box::new(session), hello))
     }
 
     pub fn info(&self) -> &HostSessionInfo {
@@ -562,7 +592,7 @@ fn connect(
 mod tests {
     use super::*;
     use crate::core::error::ErrorKind;
-    use crate::core::host::{NoopEvents, RecordingEvents};
+    use crate::core::host::RecordingEvents;
     use std::sync::atomic::AtomicUsize;
     use tempfile::TempDir;
 
@@ -600,6 +630,14 @@ mod tests {
     ) -> impl Fn(&RemoteHostRecord, &[&str]) -> Command + Send + Sync + 'static {
         let (script, hello) = (script.to_string(), hello.to_string());
         move |_: &RemoteHostRecord, _: &[&str]| fake_server(&script, &hello)
+    }
+
+    /// A 1.39.0 CLI, which has no `serve` yet.
+    fn older_cli(_: &RemoteHostRecord, args: &[&str]) -> Command {
+        match args {
+            ["--version"] => fake_server("echo skills-manager-cli 1.39.0", ""),
+            _ => fake_server("echo \"error: unrecognized subcommand 'serve'\" >&2; exit 2", ""),
+        }
     }
 
     /// Sessions over hosts `h1` and `h2`, reached through `cli`.
@@ -674,6 +712,31 @@ mod tests {
         assert!(err.message.contains("build box"), "{}", err.message);
     }
 
+    #[test]
+    fn a_handshake_reports_another_version_and_closes() {
+        let cli = fake_cli(
+            r#"printf '%s\n' "$1"; cat >/dev/null"#,
+            &hello_line("0.1.0"),
+        );
+        let started = Instant::now();
+        assert_eq!(RemoteSession::handshake(&cli, &host()).unwrap(), "0.1.0");
+        // Closing stdin ended the stand-in well before the kill deadline.
+        assert!(started.elapsed() < EXIT_GRACE);
+    }
+
+    #[test]
+    fn a_handshake_reports_the_version_of_a_cli_from_before_serve() {
+        assert_eq!(RemoteSession::handshake(&older_cli, &host()).unwrap(), "1.39.0");
+    }
+
+    #[test]
+    fn a_failed_handshake_is_classified() {
+        let cli = fake_cli("echo BRIDGE_BROKEN >&2; exit 3", "");
+        let err = RemoteSession::handshake(&cli, &host()).unwrap_err();
+        assert_eq!(err.kind, ErrorKind::NotFound);
+        assert!(err.message.contains("republish"), "{}", err.message);
+    }
+
     /// The server reads one request and dies without answering.
     #[tokio::test]
     async fn a_dropped_link_fails_pending_calls_and_says_so() {
@@ -707,14 +770,7 @@ mod tests {
 
     #[test]
     fn a_cli_from_before_serve_is_refused_with_its_version() {
-        let cli = |_: &RemoteHostRecord, args: &[&str]| match args {
-            ["--version"] => fake_server("echo skills-manager-cli 1.39.0", ""),
-            _ => fake_server(
-                "echo \"error: unrecognized subcommand 'serve'\" >&2; exit 2",
-                "",
-            ),
-        };
-        let err = RemoteSession::spawn(&cli, &host(), Arc::new(NoopEvents))
+        let err = RemoteSession::spawn(&older_cli, &host(), Arc::new(NoopEvents))
             .err()
             .expect("an older CLI must refuse");
         assert_eq!(err.kind, ErrorKind::InvalidInput);

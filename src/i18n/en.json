@@ -1224,7 +1224,6 @@
   "remoteHosts": {
     "title": "Remote Hosts",
     "description": "Manage skills on another machine that has Skills Manager, over your existing SSH setup. Nothing is stored here but the address; keys and ssh config do the authentication.",
-    "sidebar": "Remote",
     "empty": "No remote hosts yet.",
     "add": "Add host",
     "edit": "Edit",
@@ -1242,32 +1241,7 @@
     },
     "probe": "Check",
     "probeOk": "Reachable · CLI {{version}}",
-    "probeIncompatible": "CLI {{version}} does not match this app ({{appVersion}}); update Skills Manager on the host before deploying.",
-    "view": {
-      "notFound": "This remote host no longer exists.",
-      "agents": "Agents on this host",
-      "noAgents": "No enabled agents found on this host.",
-      "skills": "Remote library",
-      "noSkills": "The remote library is empty.",
-      "skillCount": "{{count}} skills",
-      "deployedTo": "Deployed to",
-      "notDeployed": "Not deployed",
-      "deploy": "Deploy to {{agent}}",
-      "undeploy": "Remove from {{agent}}",
-      "deployed": "Deployed \"{{name}}\" to {{agent}} on {{host}}.",
-      "undeployed": "Removed \"{{name}}\" from {{agent}} on {{host}}.",
-      "update": "Update",
-      "updated": "Updated \"{{name}}\" on {{host}}.",
-      "upToDate": "\"{{name}}\" is already up to date on {{host}}.",
-      "install": "Install from library",
-      "installTitle": "Install on {{host}}",
-      "installHint": "The host fetches each skill from its Git or skills.sh source itself. Local-only skills cannot be pushed.",
-      "installSelected": "Install {{count}}",
-      "installed": "Installed \"{{name}}\" on {{host}}.",
-      "installFailed": "Failed to install \"{{name}}\"",
-      "noRemoteSource": "No remote source",
-      "writesBlocked": "Deploying is disabled until the CLI on this host matches the app's major version."
-    }
+    "probeIncompatible": "Skills Manager there is {{version}}; this app is {{appVersion}}. Both must run the same version to connect."
   },
   "hostSwitcher": {
     "label": "Machine",

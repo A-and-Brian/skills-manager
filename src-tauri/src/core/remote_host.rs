@@ -1,19 +1,14 @@
-//! Run `skills-manager-cli` on another machine over SSH.
+//! Reach `skills-manager-cli` on another machine over SSH.
 //!
 //! A remote host is any POSIX machine the user can already reach with `ssh`
 //! and that has Skills Manager (app or CLI) on it. The app spawns the system
-//! `ssh` binary in batch mode (it never prompts), runs the CLI there with
-//! `--json`, and parses what comes back. No daemon, no open port, no stored
-//! credentials: the user's SSH agent, keys and `~/.ssh/config` do the work.
-//!
-//! Every function here blocks on a network round trip. Callers run them inside
-//! `spawn_blocking`, the same way the Git backup commands do.
+//! `ssh` binary in batch mode (it never prompts) and runs `serve --stdio`
+//! there. No daemon, no open port, no stored credentials: the user's SSH
+//! agent, keys and `~/.ssh/config` do the work.
 
-use semver::Version;
-use serde_json::Value;
-use std::process::{Command, Output};
+use std::process::Command;
 
-use super::error::{AppError, ErrorKind, TargetConflictDetail};
+use super::error::AppError;
 use super::skill_store::RemoteHostRecord;
 
 const CONNECT_TIMEOUT_SECS: u32 = 10;
@@ -34,74 +29,6 @@ elif [ -s "$D/.version" ] || [ -e "$B" ]; then echo BRIDGE_BROKEN >&2; exit 3
 else B="$(command -v skills-manager-cli 2>/dev/null || true)"; [ -x "$B" ] || { echo CLI_NOT_FOUND >&2; exit 3; }
 fi
 exec "$B" "$@""#;
-
-/// The version of this app, which the remote CLI must share a major with
-/// before any write is sent its way.
-pub fn app_version() -> Version {
-    Version::parse(env!("CARGO_PKG_VERSION")).expect("crate version is valid semver")
-}
-
-pub fn is_compatible(remote: &Version) -> bool {
-    remote.major == app_version().major
-}
-
-/// The remote CLI version, from `--version`.
-pub fn version(host: &RemoteHostRecord) -> Result<Version, AppError> {
-    let stdout = run_raw(host, &["--version"])?;
-    parse_version_output(&stdout)
-        .ok_or_else(|| AppError::internal(format!("unexpected --version output: {stdout:?}")))
-}
-
-/// Run a read-only CLI command with `--json` and return its parsed payload.
-pub fn run(host: &RemoteHostRecord, args: &[&str]) -> Result<Value, AppError> {
-    let mut full = Vec::with_capacity(args.len() + 1);
-    full.push("--json");
-    full.extend_from_slice(args);
-    let stdout = run_raw(host, &full)?;
-    serde_json::from_str(&stdout)
-        .map_err(|e| AppError::internal(format!("remote CLI returned invalid JSON: {e}")))
-}
-
-/// Like [`run`], but refuses to proceed when the remote CLI's major version
-/// differs from this app's. A write sent to a CLI that speaks a different
-/// contract can do the wrong thing silently; a read at worst shows odd data.
-pub fn run_write(host: &RemoteHostRecord, args: &[&str]) -> Result<Value, AppError> {
-    let remote = version(host)?;
-    if !is_compatible(&remote) {
-        return Err(AppError::invalid_input(format!(
-            "The Skills Manager CLI on {} is version {remote}, which is not compatible with this app ({}). Update Skills Manager on that host first.",
-            host.name,
-            app_version()
-        )));
-    }
-    run(host, args)
-}
-
-fn run_raw(host: &RemoteHostRecord, cli_args: &[&str]) -> Result<String, AppError> {
-    let output = ssh_command(host, cli_args)
-        .output()
-        .map_err(|e| AppError::io(format!("cannot start ssh: {e}")))?;
-    interpret_output(host, output)
-}
-
-fn ssh_command(host: &RemoteHostRecord, cli_args: &[&str]) -> Command {
-    let mut cmd = Command::new("ssh");
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-    cmd.arg("-o")
-        .arg("BatchMode=yes")
-        .arg("-o")
-        .arg(format!("ConnectTimeout={CONNECT_TIMEOUT_SECS}"))
-        // Ends option parsing, so a target that starts with `-` cannot be
-        // read as an ssh flag.
-        .arg("--")
-        .arg(&host.ssh_target)
-        .arg(remote_command(host, cli_args));
-    cmd
-}
 
 /// `skills-manager-cli CLI_ARGS` on the host, the way the live session runs
 /// it: normally `serve --stdio`. `-T` keeps a terminal out of the byte
@@ -128,7 +55,7 @@ pub fn cli_command(host: &RemoteHostRecord, cli_args: &[&str]) -> Command {
 
 /// The single string ssh hands to the remote login shell. It is wrapped in
 /// `sh -c` so the resolver runs under POSIX `sh` whatever the login shell is;
-/// on a non-POSIX remote `sh` itself is missing, which [`interpret_output`]
+/// on a non-POSIX remote `sh` itself is missing, which [`classify_failure`]
 /// turns into an explicit "unsupported" error.
 fn remote_command(host: &RemoteHostRecord, cli_args: &[&str]) -> String {
     // `sh -c SCRIPT NAME ARGS…` binds NAME to `$0` and ARGS to `$@`.
@@ -146,18 +73,9 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r#"'\''"#))
 }
 
-fn interpret_output(host: &RemoteHostRecord, output: Output) -> Result<String, AppError> {
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if output.status.success() {
-        return Ok(stdout);
-    }
-    Err(classify_failure(host, output.status.code(), &stderr))
-}
-
-/// Turn a failed ssh run into the error the UI should show. Ordered from the
-/// transport outward: ssh itself, then the remote shell, then the resolver,
-/// then the CLI's own JSON envelope.
+/// Turn a session that ended before its hello into the error the UI should
+/// show. Ordered from the transport outward: ssh itself, then the remote
+/// shell, then the resolver, then whatever the CLI said.
 pub(crate) fn classify_failure(
     host: &RemoteHostRecord,
     code: Option<i32>,
@@ -190,62 +108,15 @@ pub(crate) fn classify_failure(
             ));
         }
     }
-    match serde_json::from_str::<Value>(last_line(stderr)) {
-        Ok(envelope) if envelope.get("ok") == Some(&Value::Bool(false)) => map_envelope(&envelope),
-        _ => AppError::internal(format!(
-            "Remote command failed (exit {}): {}",
-            code.map_or("signal".to_string(), |c| c.to_string()),
-            if stderr.is_empty() { "no output" } else { stderr }
-        )),
-    }
-}
-
-/// Map the CLI's `--json` failure envelope (`ok=false`, stable `code`,
-/// `message`) onto the same `AppError` a local command would have produced,
-/// so the frontend handles both alike. A deployment refusal keeps its paths.
-fn map_envelope(envelope: &Value) -> AppError {
-    let code = envelope["code"].as_str().unwrap_or("COMMAND_FAILED");
-    let message = envelope["message"]
-        .as_str()
-        .or_else(|| envelope["error"].as_str())
-        .unwrap_or("remote command failed")
-        .to_string();
-    match code {
-        "TARGET_CONFLICT" => {
-            let conflicts = envelope["details"]["conflicts"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|c| TargetConflictDetail {
-                    path: c["path"].as_str().unwrap_or_default().to_string(),
-                    reason: c["reason"].as_str().unwrap_or_default().to_string(),
-                })
-                .collect();
-            AppError::target_conflict(message, conflicts)
+    AppError::internal(format!(
+        "Remote command failed (exit {}): {}",
+        code.map_or("signal".to_string(), |c| c.to_string()),
+        if stderr.is_empty() {
+            "no output"
+        } else {
+            stderr
         }
-        "INVALID_ARGUMENT" => AppError::invalid_input(message),
-        _ => AppError {
-            kind: match envelope["kind"].as_str() {
-                Some("not_found") => ErrorKind::NotFound,
-                Some("invalid_input") => ErrorKind::InvalidInput,
-                Some("network") => ErrorKind::Network,
-                Some("io") => ErrorKind::Io,
-                Some("git") => ErrorKind::Git,
-                _ => ErrorKind::Internal,
-            },
-            message,
-            details: None,
-        },
-    }
-}
-
-/// `clap` prints `skills-manager-cli 1.40.0`; take the last token so a
-/// differently named binary still parses.
-fn parse_version_output(stdout: &str) -> Option<Version> {
-    stdout
-        .split_whitespace()
-        .last()
-        .and_then(|token| Version::parse(token).ok())
+    ))
 }
 
 fn last_line(text: &str) -> &str {
@@ -261,6 +132,7 @@ pub(crate) fn predates_serve(code: Option<i32>, stderr: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::error::ErrorKind;
 
     fn host(cli_path: Option<&str>) -> RemoteHostRecord {
         RemoteHostRecord {
@@ -316,44 +188,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_clap_version_output() {
-        let v = parse_version_output("skills-manager-cli 1.40.0\n").unwrap();
-        assert_eq!((v.major, v.minor, v.patch), (1, 40, 0));
-        assert!(parse_version_output("garbage").is_none());
-    }
-
-    #[test]
-    fn a_deployment_refusal_keeps_its_paths() {
-        let envelope: Value = serde_json::from_str(
-            r#"{"ok":false,"code":"TARGET_CONFLICT","kind":"target_conflict",
-                "message":"Refusing to deploy: 1 of 2 target(s) are not ours",
-                "details":{"conflicts":[{"path":"/home/me/.claude/skills/db","reason":"is not a managed deployment"}]}}"#,
-        )
-        .unwrap();
-        let err = map_envelope(&envelope);
-        assert_eq!(err.kind, ErrorKind::TargetConflict);
-        let details = err.details.unwrap();
-        assert_eq!(details.conflicts.len(), 1);
-        assert_eq!(details.conflicts[0].path, "/home/me/.claude/skills/db");
-    }
-
-    #[test]
-    fn an_ordinary_failure_keeps_its_message() {
-        let envelope: Value = serde_json::from_str(
-            r#"{"ok":false,"code":"COMMAND_FAILED","message":"skill 'nope' not found","error":"skill 'nope' not found"}"#,
-        )
-        .unwrap();
-        let err = map_envelope(&envelope);
-        assert_eq!(err.kind, ErrorKind::Internal);
-        assert_eq!(err.message, "skill 'nope' not found");
-
-        let bad_args: Value =
-            serde_json::from_str(r#"{"ok":false,"code":"INVALID_ARGUMENT","message":"missing --agent"}"#)
-                .unwrap();
-        assert_eq!(map_envelope(&bad_args).kind, ErrorKind::InvalidInput);
-    }
-
-    #[test]
     fn only_a_refused_serve_marks_an_older_cli() {
         assert!(predates_serve(Some(2), "error: unrecognized subcommand 'serve'\n\nUsage: skills-manager-cli"));
         assert!(!predates_serve(Some(2), "error: unexpected argument '--stdio' found"));
@@ -378,45 +212,8 @@ mod tests {
         assert_eq!(classify_failure(&h, Some(3), "CLI_NOT_FOUND").kind, ErrorKind::NotFound);
         assert!(classify_failure(&h, Some(3), "BRIDGE_BROKEN").message.contains("republish"));
 
-        let envelope = classify_failure(
-            &h,
-            Some(1),
-            "warning: something\n{\"ok\":false,\"code\":\"COMMAND_FAILED\",\"message\":\"boom\"}",
-        );
-        assert_eq!(envelope.message, "boom");
-
         let opaque = classify_failure(&h, Some(1), "segfault");
         assert_eq!(opaque.kind, ErrorKind::Internal);
         assert!(opaque.message.contains("exit 1"));
-    }
-
-    /// Transport round trip against this machine. Needs `ssh localhost` to
-    /// work non-interactively (key in `authorized_keys`, host key trusted);
-    /// when it does not, the test reports itself as skipped rather than
-    /// failing on a machine that simply has no such setup.
-    #[test]
-    fn localhost_round_trip() {
-        let reachable = Command::new("ssh")
-            .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=3", "--", "localhost", "true"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        if !reachable {
-            eprintln!("skipped: ssh localhost is not available");
-            return;
-        }
-        let local = RemoteHostRecord {
-            id: "local".into(),
-            name: "localhost".into(),
-            ssh_target: "localhost".into(),
-            cli_path: None,
-            created_at: 0,
-        };
-        match version(&local) {
-            Ok(v) => assert!(v.major >= 1),
-            // ssh works but no CLI is installed here: the resolver said so.
-            Err(e) if e.kind == ErrorKind::NotFound => {}
-            Err(e) => panic!("unexpected error: {e}"),
-        }
     }
 }

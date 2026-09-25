@@ -86,7 +86,10 @@ function formatBytes(bytes: number) {
 
 export function Backup() {
   const { t } = useTranslation();
-  const { managedSkills, refreshManagedSkills, refreshPresets } = useApp();
+  const { managedSkills, refreshManagedSkills, refreshPresets, activeHost } = useApp();
+  // Backup is this computer's, but while a host is active the shared skill
+  // list is the host's, so it says nothing about what is backed up here.
+  const localSkills = activeHost ? null : managedSkills;
   const [gitStatus, setGitStatus] = useState<GitBackupStatus | null>(null);
   const [remoteInput, setRemoteInput] = useState("");
   const [remoteConfig, setRemoteConfig] = useState("");
@@ -536,7 +539,7 @@ export function Backup() {
   };
 
   const conflictDisplayName = (conflict: api.PendingConflict) => {
-    const managed = managedSkills.find((skill) => skill.id === conflict.skill_id);
+    const managed = localSkills?.find((skill) => skill.id === conflict.skill_id);
     if (managed?.name) return managed.name;
     const fromPath = conflict.theirs_path?.split("/").pop();
     return fromPath || conflict.skill_id.slice(0, 8);
@@ -1304,10 +1307,12 @@ export function Backup() {
           <section className="app-panel p-4">
             <h2 className="text-[14px] font-semibold text-secondary">{t("backup.summary.title")}</h2>
             <div className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
-              <div className="rounded-md border border-border-subtle bg-bg-secondary px-3 py-2">
-                <div className="text-faint">{t("backup.summary.skills")}</div>
-                <div className="mt-1 text-[18px] font-semibold text-primary">{managedSkills.length}</div>
-              </div>
+              {localSkills && (
+                <div className="rounded-md border border-border-subtle bg-bg-secondary px-3 py-2">
+                  <div className="text-faint">{t("backup.summary.skills")}</div>
+                  <div className="mt-1 text-[18px] font-semibold text-primary">{localSkills.length}</div>
+                </div>
+              )}
               <div className="rounded-md border border-border-subtle bg-bg-secondary px-3 py-2">
                 <div className="text-faint">{t("backup.summary.snapshots")}</div>
                 <div className="mt-1 text-[18px] font-semibold text-primary">{versions.length}</div>
