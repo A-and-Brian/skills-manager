@@ -3,7 +3,6 @@ import {
   CheckCircle2,
   Cloud,
   ExternalLink,
-  History,
   Loader2,
   RefreshCw,
   Save,
@@ -14,7 +13,6 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { cn } from "../utils";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { GitRecoveryDialog } from "../components/GitRecoveryDialog";
@@ -23,6 +21,7 @@ import { LocalBackupNotice } from "../components/LocalBackupNotice";
 import { BackupStatusCard } from "../components/BackupStatusCard";
 import { BackupConflicts } from "../components/BackupConflicts";
 import { GithubConnectCard } from "../components/GithubConnectCard";
+import { BackupHistoryList } from "../components/BackupHistoryList";
 import { useApp } from "../context/AppContext";
 import { useBackupStatus } from "../hooks/useBackupStatus";
 import { useGithubDeviceFlow } from "../hooks/useGithubDeviceFlow";
@@ -43,13 +42,6 @@ type LoadingAction = "start" | "sync" | "recovery" | "save" | "disconnect" | "gi
 
 const DEFAULT_GITHUB_REPO = "skills-manager-backup";
 type RecoveryReason = GitUpstreamHealth | "conflict";
-
-function formatDateTime(iso: string) {
-  if (!iso) return "-";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString();
-}
 
 export function Backup() {
   const { t } = useTranslation();
@@ -544,61 +536,14 @@ export function Backup() {
             </div>
           </section>
 
-          <section className="app-panel p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-muted" />
-                <h2 className="text-[14px] font-semibold text-secondary">{t("backup.history.title")}</h2>
-              </div>
-              <button
-                type="button"
-                onClick={refreshVersions}
-                disabled={versionsLoading || !gitStatus?.is_repo}
-                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-[13px] text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
-              >
-                <RefreshCw className={cn("h-3 w-3", versionsLoading && "animate-spin")} />
-                {t("settings.refresh")}
-              </button>
-            </div>
-
-            {versionsLoading ? (
-              <div className="py-6 text-center text-[13px] text-muted">{t("mySkills.gitVersionLoading")}</div>
-            ) : versions.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border-subtle py-6 text-center text-[13px] text-muted">
-                {t("backup.history.empty")}
-              </div>
-            ) : (
-              <div className="max-h-[360px] space-y-1.5 overflow-auto pr-1">
-                {versions.map((version) => (
-                  <div
-                    key={version.tag}
-                    className="flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-bg-secondary px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate text-[13px] font-semibold text-secondary">
-                        {displaySnapshotLabel(version.tag)}
-                      </div>
-                      <div className="truncate text-[12px] text-muted">{version.message || version.commit}</div>
-                      <div className="text-[11px] text-faint">
-                        {version.author ? `${version.author} · ` : ""}
-                        {version.commit} · {formatDateTime(version.committed_at)}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setRestoreVersionTag(version.tag)}
-                      disabled={!!restoringVersionTag}
-                      className="shrink-0 rounded-lg border border-border-subtle px-2 py-1 text-[12px] font-medium text-secondary transition-colors hover:bg-surface-hover disabled:opacity-50"
-                    >
-                      {restoringVersionTag === version.tag
-                        ? t("mySkills.gitVersionRestoring")
-                        : t("mySkills.gitVersionRestore")}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          <BackupHistoryList
+            versions={versions}
+            versionsLoading={versionsLoading}
+            gitStatus={gitStatus}
+            restoringVersionTag={restoringVersionTag}
+            onRefresh={refreshVersions}
+            onRestore={setRestoreVersionTag}
+          />
         </div>
 
         <aside className="space-y-4">
