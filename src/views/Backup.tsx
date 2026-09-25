@@ -31,6 +31,7 @@ import { GitSetupDialog } from "../components/GitSetupDialog";
 import { LocalBackupNotice } from "../components/LocalBackupNotice";
 import { useApp } from "../context/AppContext";
 import { getErrorKind, getErrorMessage } from "../lib/error";
+import { gitBackupMode, pendingBreakdown } from "../lib/gitBackupMode";
 import { mapGitErrorMessage } from "../lib/gitErrors";
 import * as api from "../lib/tauri";
 import type {
@@ -39,14 +40,6 @@ import type {
   GitBackupVersion,
   GitUpstreamHealth,
 } from "../lib/tauri";
-
-type BackupMode =
-  | "loading"
-  | "uninitialized"
-  | "needs_remote"
-  | "needs_fix"
-  | "up_to_date"
-  | "pending_changes";
 
 type LoadingAction = "start" | "sync" | "recovery" | "save" | "disconnect" | "github" | null;
 
@@ -276,20 +269,7 @@ export function Backup() {
     }
   }, [gitStatus?.is_repo, refreshVersions]);
 
-  const mode: BackupMode = useMemo(() => {
-    if (!gitStatus) return "loading";
-    if (!gitStatus.is_repo) return "uninitialized";
-    if (!gitStatus.remote_url && !remoteConfig) return "needs_remote";
-    if (
-      gitStatus.upstream_health === "unrelated_histories"
-      || gitStatus.upstream_health === "detached"
-    ) {
-      return "needs_fix";
-    }
-    if (gitStatus.upstream_health === "no_upstream") return "pending_changes";
-    if (gitStatus.has_changes || gitStatus.ahead > 0 || gitStatus.behind > 0) return "pending_changes";
-    return "up_to_date";
-  }, [gitStatus, remoteConfig]);
+  const mode = useMemo(() => gitBackupMode(gitStatus, remoteConfig), [gitStatus, remoteConfig]);
 
   const statusMeta = useMemo(() => {
     // A failed backup stays visible (with a plain-language reason and a retry
@@ -333,8 +313,7 @@ export function Backup() {
         // Three distinct situations wear this state; naming them precisely
         // matters because "back up" reads as push-only and makes users fear
         // overwriting the remote when only remote updates exist.
-        const localCount = Math.max(gitStatus?.ahead ?? 0, gitStatus?.has_changes ? 1 : 0);
-        const remoteCount = gitStatus?.behind ?? 0;
+        const { local: localCount, remote: remoteCount } = pendingBreakdown(gitStatus);
         const remoteOnly = remoteCount > 0 && localCount === 0;
         const both = remoteCount > 0 && localCount > 0;
         return {

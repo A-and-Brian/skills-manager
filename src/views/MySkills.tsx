@@ -72,6 +72,7 @@ import type {
   SkillToolToggle,
 } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
+import { gitBackupMode, type GitBackupMode } from "../lib/gitBackupMode";
 import {
   DndContext,
   closestCenter,
@@ -983,36 +984,7 @@ export function MySkills() {
     });
   };
 
-  type GitToolbarMode =
-    | "loading"
-    | "uninitialized"
-    | "needs_remote"
-    | "needs_fix"
-    | "up_to_date"
-    | "pending_changes";
-
-  const getGitToolbarMode = (): GitToolbarMode => {
-    if (!gitStatus) return "loading";
-    if (!gitStatus.is_repo) return "uninitialized";
-    if (!gitStatus.remote_url && !gitRemoteConfig) return "needs_remote";
-    if (
-      gitStatus.upstream_health === "unrelated_histories"
-      || gitStatus.upstream_health === "detached"
-    ) {
-      return "needs_fix";
-    }
-    // First-push case: remote is set but upstream tracking is not yet established.
-    // Treat as a normal pending sync — the push path will set upstream automatically.
-    if (gitStatus.upstream_health === "no_upstream") {
-      return "pending_changes";
-    }
-    if (gitStatus.has_changes || gitStatus.ahead > 0 || gitStatus.behind > 0) {
-      return "pending_changes";
-    }
-    return "up_to_date";
-  };
-
-  const getGitStatusMeta = (mode: GitToolbarMode) => {
+  const getGitStatusMeta = (mode: GitBackupMode) => {
     if (mode === "loading") {
       return {
         icon: Loader2,
@@ -1302,7 +1274,7 @@ export function MySkills() {
         <div className="flex items-center gap-3">
           <div className="app-segmented app-toolbar-segmented shrink-0">
             {!onRemote && (() => {
-              const mode = getGitToolbarMode();
+              const mode = gitBackupMode(gitStatus, gitRemoteConfig);
               const meta = getGitStatusMeta(mode);
               const Icon = meta.icon;
               return (
