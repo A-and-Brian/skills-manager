@@ -1101,6 +1101,11 @@ pub fn run() {
             commands::projects::update_project_skill_from_center,
             commands::projects::toggle_project_skill,
             commands::projects::delete_project_skill,
+            commands::projects::set_project_agent_keys,
+            commands::projects::preview_project_agent_change,
+            commands::projects::apply_project_agent_change,
+            commands::projects::set_project_skill_agents,
+            commands::projects::clear_project_skill_agents,
             commands::projects::slugify_skill_names,
             // Agent local workspace
             commands::agent_workspace::get_global_local_skills,

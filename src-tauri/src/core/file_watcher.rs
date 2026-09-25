@@ -467,6 +467,7 @@ mod tests {
                 sort_order: 0,
                 created_at: 0,
                 updated_at: 0,
+                agent_keys: None,
             })
             .unwrap();
 
@@ -490,6 +491,7 @@ mod tests {
                 sort_order: 0,
                 created_at: 0,
                 updated_at: 0,
+                agent_keys: None,
             })
             .unwrap();
     }

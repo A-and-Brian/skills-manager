@@ -1019,7 +1019,34 @@
     "batchEditTags": "Tags ({{count}})",
     "batchTagsUpdated": "Tags updated for {{count}} center skills",
     "batchTagsFailed": "{{count}} center skills failed to update tags",
-    "batchTagScopeNote": "Tags live in the central library, so edits affect every project using these skills. Project-only local skills are left untouched."
+    "batchTagScopeNote": "Tags live in the central library, so edits affect every project using these skills. Project-only local skills are left untouched.",
+    "agentsButton": "Agents",
+    "agentsButtonHint": "Choose which agents this project uses",
+    "agentsOverridden": "This skill's agents were chosen by hand, so project-wide agent changes skip it.",
+    "useProjectAgents": "Use project agents",
+    "useProjectAgentsDone": "\"{{name}}\" now uses the project's agents",
+    "agentsDialog": {
+      "title": "Project agents",
+      "reviewTitle": "Review agent changes",
+      "description": "New skills are added to these agents. Changing them also updates the skills already in this project.",
+      "sharedFolderHint": "Agents listed together share one folder, so they are added and removed together.",
+      "review": "Review changes",
+      "apply": "Apply",
+      "back": "Back",
+      "noChanges": "No skills need to change.",
+      "overridden": "{{count}} skills keep their own agent choice.",
+      "skippedAgent": "{{agent}}: {{reason}}",
+      "skipReason": {
+        "overridden": "keeps its own agents",
+        "not_in_library": "not in the library, so it can't be added",
+        "real_directory": "a real folder, not a link, so it is kept",
+        "unavailable_agent": "not installed or turned off",
+        "shared_dir": "shared folder, so it is kept"
+      },
+      "applied": "Agents updated: {{added}} added, {{removed}} removed",
+      "failed": "{{count}} changes failed",
+      "saved": "Project agents saved"
+    }
   },
   "presetActions": {
     "button": "Apply Preset",
