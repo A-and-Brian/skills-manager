@@ -12,7 +12,8 @@ use crate::reports::{
     PresetAgentStatus, PresetDeactivateReport, PresetDeleteReport, PresetDeploymentReport,
     PresetInfo, PresetMembershipReport, PresetStatusReport,
 };
-use crate::{resolve_skill_references, verify_deployment_state};
+use crate::skills::list::resolve_skill_references;
+use crate::verify_deployment_state;
 
 pub(crate) fn run_presets(args: PresetArgs, store: &SkillStore, json: bool) -> anyhow::Result<()> {
     match args.command {

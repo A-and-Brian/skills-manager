@@ -4,11 +4,15 @@ use app_lib::core::{skill_source, skill_store::SkillStore};
 
 use crate::args::{SkillsArgs, SkillsCommand};
 use crate::output::{map_app_err, print_json};
-use crate::{
-    classify_ref, export_skill, list_skills_filtered, resolve_skill, run_adopt, run_check,
-    run_deprecated_set_enabled, run_install, run_remove, run_search, run_skill_deployment,
-    run_sync, run_tag, run_update, show_skill, skill_status, SyncTarget,
+use crate::skills::list::{
+    export_skill, list_skills_filtered, resolve_skill, show_skill, skill_status,
 };
+use crate::{
+    classify_ref, run_adopt, run_check, run_deprecated_set_enabled, run_install, run_remove,
+    run_search, run_skill_deployment, run_sync, run_tag, run_update, SyncTarget,
+};
+
+pub(crate) mod list;
 
 pub(crate) fn run_skills(args: SkillsArgs, store: &SkillStore, json: bool) -> anyhow::Result<()> {
     match args.command {
