@@ -1040,6 +1040,7 @@
         "overridden": "保留自己的 Agent",
         "not_in_library": "不在技能库中，无法添加",
         "real_directory": "是真实文件夹而非链接，予以保留",
+        "foreign_link": "是指向内置副本以外位置的链接，予以保留",
         "unavailable_agent": "未安装或已停用",
         "shared_dir": "共用文件夹，予以保留"
       },

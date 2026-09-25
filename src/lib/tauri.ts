@@ -153,7 +153,11 @@ export interface Project {
   updated_at: number;
   /** Agents the project deploys to; null means it never chose and uses every available agent. */
   agent_keys: string[] | null;
+  /** "copy" vendors skills into the project's .agents/skills and links the other agents there. */
+  deploy_mode: ProjectDeployMode;
 }
+
+export type ProjectDeployMode = "link" | "copy";
 
 export interface ProjectAgentTarget {
   key: string;
@@ -171,6 +175,7 @@ export type AgentSkipReason =
   | "overridden"
   | "not_in_library"
   | "real_directory"
+  | "foreign_link"
   | "unavailable_agent"
   | "shared_dir";
 
@@ -202,6 +207,32 @@ export interface SkillAgentOutcome {
   failed: { agent: string; error: string }[];
 }
 
+export type ConvertAction = "relink" | "keep_real_dir" | "keep_foreign_link" | "keep_mixed_state";
+
+export interface VariantConversion {
+  agent: string;
+  action: ConvertAction;
+}
+
+export interface SkillConversion {
+  relative_path: string;
+  name: string;
+  /** Where the vendored copy comes from; null when it is vendored already. */
+  copy_from: string | null;
+  variants: VariantConversion[];
+}
+
+export interface ConversionOutcome {
+  relative_path: string;
+  name: string;
+  vendored: boolean;
+  relinked: string[];
+  kept: VariantConversion[];
+  failed: { agent: string; error: string }[];
+  /** Why the vendored copy could not be written; nothing was relinked. */
+  error: string | null;
+}
+
 export interface ProjectSkill {
   name: string;
   dir_name: string;
@@ -218,6 +249,10 @@ export interface ProjectSkill {
   center_skill_id: string | null;
   /** The skill's agents were chosen by hand, so bulk agent changes skip it. */
   agents_overridden: boolean;
+  /** Relative path of the vendored skill this copy links to, when it links into .agents/skills. */
+  alias_of: string | null;
+  /** This copy is a vendored copy: real files in .agents/skills, which links from other agents may read. */
+  vendored: boolean;
 }
 
 export interface ProjectSkillDocument {
@@ -819,8 +854,8 @@ export const reorderPresetSkills = (presetId: string, skillIds: string[]) =>
 
 export const getProjects = () => invoke<Project[]>("get_projects");
 
-export const addProject = (path: string) =>
-  invoke<Project>("add_project", { path });
+export const addProject = (path: string, deployMode?: ProjectDeployMode) =>
+  invoke<Project>("add_project", { path, deployMode: deployMode ?? null });
 
 export const addLinkedWorkspace = (name: string, path: string, disabledPath?: string) =>
   invoke<Project>("add_linked_workspace", {
@@ -859,8 +894,9 @@ export const updateProjectSkillFromCenter = (projectId: string, skillRelativePat
 export const toggleProjectSkill = (projectId: string, skillRelativePath: string, agent: string, enabled: boolean) =>
   invoke<void>("toggle_project_skill", { projectId, skillRelativePath, agent, enabled });
 
-export const deleteProjectSkill = (projectId: string, skillRelativePath: string, agent: string) =>
-  invoke<void>("delete_project_skill", { projectId, skillRelativePath, agent });
+/** A vendored copy is only deleted with `wholeSkill`, which also removes every link to it. */
+export const deleteProjectSkill = (projectId: string, skillRelativePath: string, agent: string, wholeSkill = false) =>
+  invoke<void>("delete_project_skill", { projectId, skillRelativePath, agent, wholeSkill });
 
 export const setProjectAgentKeys = (projectId: string, agentKeys: string[] | null) =>
   invoke<void>("set_project_agent_keys", { projectId, agentKeys });
@@ -876,6 +912,16 @@ export const setProjectSkillAgents = (projectId: string, skillRelativePath: stri
 
 export const clearProjectSkillAgents = (projectId: string, skillRelativePath: string) =>
   invoke<SkillAgentOutcome>("clear_project_skill_agents", { projectId, skillRelativePath });
+
+/** Only "link" is accepted; a project reaches copy mode by converting. */
+export const setProjectDeployMode = (projectId: string, deployMode: "link") =>
+  invoke<void>("set_project_deploy_mode", { projectId, deployMode });
+
+export const previewProjectConvertToCopy = (projectId: string) =>
+  invoke<SkillConversion[]>("preview_project_convert_to_copy", { projectId });
+
+export const applyProjectConvertToCopy = (projectId: string) =>
+  invoke<ConversionOutcome[]>("apply_project_convert_to_copy", { projectId });
 
 export const slugifySkillNames = (names: string[]) =>
   invoke<string[]>("slugify_skill_names", { names });
