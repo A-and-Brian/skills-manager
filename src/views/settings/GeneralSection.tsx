@@ -10,7 +10,7 @@ import type { Theme } from "../../hooks/useTheme";
 import { SEGMENTED_BUTTON_CLASS } from "./shared";
 
 export function GeneralSection() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { theme, setTheme } = useThemeContext();
   const [closeAction, setCloseAction] = useState("");
   const [showTrayIcon, setShowTrayIcon] = useState(true);
@@ -38,12 +38,6 @@ export function GeneralSection() {
       setCloseAction("close");
       await api.setSettings("close_action", "close");
     }
-  };
-
-  const handleLanguageChange = (lng: string) => {
-    localStorage.setItem("language", lng);
-    i18n.changeLanguage(lng);
-    api.setSettings("language", lng);
   };
 
   const handleTextSizeChange = (size: string) => {
@@ -114,33 +108,6 @@ export function GeneralSection() {
                 {opt.value === "default" && <Type className="w-3 h-3" />}
                 {opt.value === "large" && <Type className="w-3.5 h-3.5" />}
                 {opt.value === "xlarge" && <Type className="w-4 h-4" />}
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Language */}
-        <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
-          <div className="min-w-0 flex-1">
-            <h3 className="text-[14px] font-semibold text-primary">{t("settings.language")}</h3>
-          </div>
-          <div className="app-segmented flex-wrap bg-background">
-            {([
-              { value: "zh", label: "简体中文" },
-              { value: "zh-TW", label: "繁體中文" },
-              { value: "en", label: "English" },
-            ] as const).map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => handleLanguageChange(opt.value)}
-                className={cn(
-                  SEGMENTED_BUTTON_CLASS,
-                  i18n.language === opt.value
-                    ? "bg-surface-active text-secondary"
-                    : "text-muted hover:text-tertiary"
-                )}
-              >
                 {opt.label}
               </button>
             ))}

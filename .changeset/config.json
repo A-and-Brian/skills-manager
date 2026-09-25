@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
+  "changelog": ["@changesets/changelog-github", { "repo": "A-and-Brian/skills-manager" }],
+  "commit": false,
+  "baseBranch": "main",
+  "access": "restricted",
+  "privatePackages": { "version": true, "tag": false },
+  "changedFilePatterns": [
+    "src/**",
+    "src-tauri/**",
+    "!src-tauri/**/*.md",
+    "skills/**",
+    "public/**",
+    "index.html",
+    "package.json",
+    "package-lock.json",
+    "vite.config.ts",
+    "tailwind.config.js",
+    "postcss.config.js"
+  ],
+  "format": false
+}

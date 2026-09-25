@@ -1,6 +1,6 @@
 import { pickPath } from "../../lib/pickPath";
 
-export const GITHUB_URL = "https://github.com/xingkongliang/skills-manager";
+export const GITHUB_URL = "https://github.com/A-and-Brian/skills-manager";
 
 // Compose the shared control classes from index.css rather than a parallel
 // set — bg-background keeps fields readable against the surface-colored panel.
