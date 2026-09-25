@@ -50,7 +50,7 @@ function App() {
               <Route path="/backup" element={<Backup />} />
               <Route path="/project/:id" element={<ProjectDetail />} />
               <Route path="/remote/:hostId" element={<RemoteHostView />} />
-              <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/:category?" element={<Settings />} />
             </Route>
           </Routes>
           <HelpDialog />

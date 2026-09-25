@@ -140,123 +140,126 @@ export function AboutSection({ reportingIssue, onReportIssue }: AboutSectionProp
   };
 
   return (
-    <div className="app-panel flex flex-wrap items-start justify-between gap-3 p-4">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-surface-hover border border-border flex items-center justify-center">
-          <Settings2 className="w-4 h-4 text-accent" />
+    <section>
+      <h2 className="app-section-title mb-3">{t("settings.about")}</h2>
+      <div className="app-panel flex flex-wrap items-start justify-between gap-3 p-4">
+        <div className="flex min-w-[260px] flex-1 items-center gap-3">
+          <div className="w-8 h-8 shrink-0 rounded-lg bg-surface-hover border border-border flex items-center justify-center">
+            <Settings2 className="w-4 h-4 text-accent" />
+          </div>
+          <div>
+            <h3 className="text-[13px] font-semibold text-primary">{t("settings.version")}</h3>
+            <p className="text-muted text-[13px]">
+              {t("settings.tagline")}
+              {appUpdate?.has_update && (
+                <span className="ml-2 text-amber-500 font-medium">
+                  {t("settings.updateAvailable", { version: appUpdate.latest_version })}
+                </span>
+              )}
+            </p>
+          </div>
         </div>
-        <div>
-          <h3 className="text-[13px] font-semibold text-primary">{t("settings.version")}</h3>
-          <p className="text-muted text-[13px]">
-            {t("settings.tagline")}
-            {appUpdate?.has_update && (
-              <span className="ml-2 text-amber-500 font-medium">
-                {t("settings.updateAvailable", { version: appUpdate.latest_version })}
-              </span>
-            )}
-          </p>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {appUpdate?.has_update ? (
-          CAN_INSTALL_IN_APP ? (
-            <>
-              <button
-                type="button"
-                onClick={handleAutoUpdate}
-                disabled={installing}
-                className={`${ACTION_BUTTON_CLASS} bg-accent text-white border-accent hover:opacity-90`}
-              >
-                {installing ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Download className="w-3 h-3" />
-                )}
-                {installing ? t("settings.installing") : t("settings.installUpdate")}
-              </button>
+        <div className="flex flex-wrap gap-2">
+          {appUpdate?.has_update ? (
+            CAN_INSTALL_IN_APP ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleAutoUpdate}
+                  disabled={installing}
+                  className={`${ACTION_BUTTON_CLASS} bg-accent text-white border-accent hover:opacity-90`}
+                >
+                  {installing ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Download className="w-3 h-3" />
+                  )}
+                  {installing ? t("settings.installing") : t("settings.installUpdate")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { openUrl(appUpdate.release_url).catch(() => {}); }}
+                  className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
+                >
+                  <ExternalLink className="w-3 h-3" /> {t("settings.download")}
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
                 onClick={() => { openUrl(appUpdate.release_url).catch(() => {}); }}
-                className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
+                className={`${ACTION_BUTTON_CLASS} bg-accent text-white border-accent hover:opacity-90`}
               >
-                <ExternalLink className="w-3 h-3" /> {t("settings.download")}
+                <Download className="w-3 h-3" /> {t("settings.download")}
               </button>
-            </>
+            )
           ) : (
             <button
               type="button"
-              onClick={() => { openUrl(appUpdate.release_url).catch(() => {}); }}
-              className={`${ACTION_BUTTON_CLASS} bg-accent text-white border-accent hover:opacity-90`}
+              onClick={handleCheckUpdate}
+              disabled={checkingUpdate}
+              className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
             >
-              <Download className="w-3 h-3" /> {t("settings.download")}
+              {checkingUpdate ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3 h-3" />
+              )}
+              {checkingUpdate ? t("settings.checking") : t("settings.checkUpdate")}
             </button>
-          )
-        ) : (
+          )}
           <button
             type="button"
-            onClick={handleCheckUpdate}
-            disabled={checkingUpdate}
+            onClick={openHelp}
             className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
           >
-            {checkingUpdate ? (
+            <BookOpen className="w-3 h-3" /> {t("settings.help")}
+          </button>
+          <button
+            type="button"
+            onClick={onReportIssue}
+            disabled={reportingIssue}
+            title={t("settings.reportIssueHint")}
+            className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
+          >
+            {reportingIssue ? (
               <Loader2 className="w-3 h-3 animate-spin" />
             ) : (
-              <RefreshCw className="w-3 h-3" />
+              <Bug className="w-3 h-3" />
             )}
-            {checkingUpdate ? t("settings.checking") : t("settings.checkUpdate")}
+            {t("settings.reportIssue")}
           </button>
-        )}
-        <button
-          type="button"
-          onClick={openHelp}
-          className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
-        >
-          <BookOpen className="w-3 h-3" /> {t("settings.help")}
-        </button>
-        <button
-          type="button"
-          onClick={onReportIssue}
-          disabled={reportingIssue}
-          title={t("settings.reportIssueHint")}
-          className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
-        >
-          {reportingIssue ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <Bug className="w-3 h-3" />
-          )}
-          {t("settings.reportIssue")}
-        </button>
-        <button
-          type="button"
-          onClick={handleExportLogs}
-          disabled={exportingLogs}
-          title={t("settings.exportLogsHint")}
-          className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
-        >
-          {exportingLogs ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <FileArchive className="w-3 h-3" />
-          )}
-          {t("settings.exportLogs")}
-        </button>
-        <button
-          type="button"
-          onClick={() => { openUrl(WEBSITE_URL).catch(() => {}); }}
-          className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
-        >
-          <Globe className="w-3 h-3" /> {t("settings.website")}
-        </button>
-        <button
-          type="button"
-          onClick={handleOpenGithub}
-          disabled={openingGithub}
-          className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
-        >
-          <Github className="w-3 h-3" /> GitHub
-        </button>
+          <button
+            type="button"
+            onClick={handleExportLogs}
+            disabled={exportingLogs}
+            title={t("settings.exportLogsHint")}
+            className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
+          >
+            {exportingLogs ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <FileArchive className="w-3 h-3" />
+            )}
+            {t("settings.exportLogs")}
+          </button>
+          <button
+            type="button"
+            onClick={() => { openUrl(WEBSITE_URL).catch(() => {}); }}
+            className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
+          >
+            <Globe className="w-3 h-3" /> {t("settings.website")}
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenGithub}
+            disabled={openingGithub}
+            className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
+          >
+            <Github className="w-3 h-3" /> GitHub
+          </button>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

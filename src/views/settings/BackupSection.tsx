@@ -7,7 +7,7 @@ import { ToggleSwitch } from "../../components/ToggleSwitch";
 import * as api from "../../lib/tauri";
 import { ACTION_BUTTON_CLASS, FIELD_CLASS } from "./shared";
 
-export function GitSyncSection() {
+export function BackupSection() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [gitRemoteInput, setGitRemoteInput] = useState("");

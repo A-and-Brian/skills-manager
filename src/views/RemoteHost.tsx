@@ -11,6 +11,7 @@ import * as api from "../lib/tauri";
 import type { ManagedSkill, RemoteHost, RemoteProbe, RemoteSkill, ToolInfo } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
 import type { PickerStatus } from "../lib/skillPickerStatus";
+import { settingsPath } from "./settings/categories";
 
 /** Sources the remote can fetch on its own; anything else lives only here. */
 const REMOTE_SOURCES = ["git", "skillssh"];
@@ -121,7 +122,7 @@ export function RemoteHostView() {
     return (
       <div className="app-page">
         <p className="text-[13px] text-muted">{t("remoteHosts.view.notFound")}</p>
-        <Link to="/settings" className="mt-2 inline-block text-[13px] font-medium text-accent">
+        <Link to={settingsPath("remote")} className="mt-2 inline-block text-[13px] font-medium text-accent">
           {t("common.goToSettings")}
         </Link>
       </div>
