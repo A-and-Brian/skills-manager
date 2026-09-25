@@ -34,12 +34,14 @@ import { DetailSheet } from "../components/DetailSheet";
 import { AgentToggleSection, type AgentToggleItem } from "../components/AgentToggleSection";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { ProjectAgentDots } from "../components/ProjectAgentDots";
+import { CreatorBadge } from "../components/CreatorBadge";
 import { PresetBar } from "../components/PresetBar";
 import { SkillMarkdown } from "../components/SkillMarkdown";
 import { DocumentDiffViewer } from "../components/DocumentDiffViewer";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
 import { enabledInstalledAgentKeys, getDefaultExportAgents } from "../lib/exportAgents";
 import { groupProjectSkills, type ProjectSkillGroup } from "../lib/projectSkillGroups";
+import { copyCreator, type SkillCreator } from "../lib/skillCreator";
 import { cn } from "../utils";
 import * as api from "../lib/tauri";
 import type { ProjectSkill, ManagedSkill, ProjectAgentTarget } from "../lib/tauri";
@@ -423,6 +425,15 @@ export function ProjectDetail() {
    * them — so the button counts (and the dialog shows) the central skills that
    * will actually change, not the rows that were clicked.
    */
+  const managedById = useMemo(
+    () => new Map(managedSkills.map((skill) => [skill.id, skill])),
+    [managedSkills]
+  );
+  const creatorOf = (skill: ProjectSkillGroup) =>
+    copyCreator(
+      skill.centerSkillIds.map((centerId) => managedById.get(centerId)).find(Boolean),
+      skill.variants.find((variant) => variant.author)?.author
+    );
   const selectedCenterSkills = useMemo(() => {
     const byId = new Map(managedSkills.map((skill) => [skill.id, skill]));
     const ids = new Set(selectedSkills.flatMap((skill) => skill.centerSkillIds));
@@ -1205,6 +1216,7 @@ export function ProjectDetail() {
               skill.status === "diverged";
             const statusMeta = getSyncStatusMeta(t, skill.status);
             const assignedAgents = getAssignedAgents(skill.variants);
+            const creator = creatorOf(skill);
 
             if (viewMode === "grid") {
               return (
@@ -1284,6 +1296,7 @@ export function ProjectDetail() {
                           {t("project.disabled")}
                         </span>
                       )}
+                      <CreatorBadge creator={creator} hideLocal />
                     </div>
                     {!isMultiSelect && (
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -1419,6 +1432,7 @@ export function ProjectDetail() {
                 )}
 
                 <div className="flex shrink-0 items-center gap-2.5">
+                  <CreatorBadge creator={creator} size="md" hideLocal className="max-w-[160px]" />
                   <span className={cn("rounded-full px-2 py-0.5 text-[12px] font-medium", statusMeta.className)}>
                     {statusMeta.label}
                   </span>
@@ -1521,6 +1535,7 @@ export function ProjectDetail() {
       {detailSkill && project && (
         <ProjectSkillDetailPanel
           skill={detailSkill}
+          creator={creatorOf(detailSkill)}
           targets={exportTargets}
           togglingAgent={
             togglingAgentTarget?.skillKey === getSkillKey(detailSkill)
@@ -1607,6 +1622,7 @@ export function ProjectDetail() {
 
 function ProjectSkillDetailPanel({
   skill,
+  creator,
   targets,
   togglingAgent,
   onToggleAgent,
@@ -1620,6 +1636,7 @@ function ProjectSkillDetailPanel({
   onClose,
 }: {
   skill: ProjectSkillGroup;
+  creator: SkillCreator;
   targets: ProjectAgentTarget[];
   togglingAgent: string | null;
   onToggleAgent: (agentKey: string, enabled: boolean) => void;
@@ -1659,6 +1676,8 @@ function ProjectSkillDetailPanel({
   const meta = (
     <>
       <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
+        <CreatorBadge creator={creator} size="md" />
+        <span className="mx-0.5 h-3 w-px bg-border-subtle" />
         <ProjectAgentDots
           assignedAgents={getAssignedAgents(skill.variants)}
           targets={getAgentDotTargets(skill.variants).map((t) => ({

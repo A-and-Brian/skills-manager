@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  copyCreator,
   creatorKeyOf,
   creatorLabel,
   LOCAL_CREATOR,
@@ -61,6 +62,15 @@ describe("skillCreator", () => {
   it("uses the author when a git source cannot be read", () => {
     expect(skillCreator({ ...git("/tmp/some/repo"), author: "Jane" })).toEqual({ kind: "author", name: "Jane" });
     expect(skillCreator(git("not a url"))).toEqual({ kind: "local" });
+  });
+});
+
+describe("copyCreator", () => {
+  it("credits a project copy like its library skill, else by its own author", () => {
+    const library: CreatorSource = { source_type: "skillssh", source_ref: "acme/tools/pdf", author: "Someone" };
+    expect(copyCreator(library, "Jane")).toEqual(acmeTools);
+    expect(copyCreator(undefined, "Jane")).toEqual({ kind: "author", name: "Jane" });
+    expect(copyCreator(undefined, null)).toEqual({ kind: "local" });
   });
 });
 

@@ -26,11 +26,13 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PresetBar } from "../components/PresetBar";
 import { AgentIcon } from "../components/AgentIcon";
 import { DetailSheet } from "../components/DetailSheet";
+import { CreatorBadge } from "../components/CreatorBadge";
 import { SkillMarkdown } from "../components/SkillMarkdown";
 import { DocumentDiffViewer } from "../components/DocumentDiffViewer";
 import * as api from "../lib/tauri";
 import type { ManagedSkill, ProjectSkill } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
+import { copyCreator, type SkillCreator } from "../lib/skillCreator";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
 import { AddSkillsSheet } from "../components/AddSkillsSheet";
 import { useMultiSelect } from "../hooks/useMultiSelect";
@@ -57,6 +59,7 @@ function WorkspaceSkillCard({
   description,
   tags = [],
   status,
+  creator,
   fileCount = 0,
   active = false,
   actions,
@@ -70,6 +73,7 @@ function WorkspaceSkillCard({
   description?: string | null;
   tags?: WorkspaceSkillCardTag[];
   status: WorkspaceSkillCardStatus;
+  creator: SkillCreator;
   fileCount?: number;
   active?: boolean;
   actions?: ReactNode;
@@ -130,6 +134,7 @@ function WorkspaceSkillCard({
           </div>
         )}
         <div className="flex shrink-0 items-center gap-2.5">
+          <CreatorBadge creator={creator} size="md" hideLocal className="max-w-[160px]" />
           <span className={cn("rounded-full px-2 py-0.5 text-[12px] font-medium", status.className)}>
             {status.label}
           </span>
@@ -200,9 +205,12 @@ function WorkspaceSkillCard({
         )}
       </div>
       <div className="mt-auto flex items-center justify-between gap-2 border-t border-border-faint px-3.5 py-2.5">
-        <span className={cn("rounded-full px-2 py-0.5 text-[12px] font-medium", status.className)}>
-          {status.label}
-        </span>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[12px] font-medium", status.className)}>
+            {status.label}
+          </span>
+          <CreatorBadge creator={creator} hideLocal />
+        </div>
         {actions && <div className="flex shrink-0 items-center gap-1.5">{actions}</div>}
       </div>
     </div>
@@ -479,6 +487,13 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
   );
 
   const installedIds = useMemo(() => new Set(agentSkills.map((s) => s.id)), [agentSkills]);
+
+  const managedById = useMemo(
+    () => new Map(managedSkills.map((skill) => [skill.id, skill])),
+    [managedSkills]
+  );
+  const creatorOf = (skill: ProjectSkill) =>
+    copyCreator(skill.center_skill_id ? managedById.get(skill.center_skill_id) : undefined, skill.author);
 
   const managedLocalIds = useMemo(
     () =>
@@ -1141,6 +1156,7 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
                 description={skill.description || skill.relative_path}
                 tags={skill.tags.map((tag) => ({ label: tag, className: getTagColor(tag, allLocalTags) }))}
                 status={statusMeta}
+                creator={creatorOf(skill)}
                 fileCount={skill.files.length}
                 active={isManaged}
                 actions={isMultiSelect ? undefined : renderLocalSkillActions(skill, viewMode)}
@@ -1177,6 +1193,7 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
         meta={
           localDetailSkill ? (
             <div className="flex flex-wrap items-center gap-2">
+              <CreatorBadge creator={creatorOf(localDetailSkill)} size="md" />
               <span className={cn("rounded-full px-2.5 py-1 text-[12px] font-medium", getLocalStatusMeta(t, localDetailSkill.sync_status).className)}>
                 {getLocalStatusMeta(t, localDetailSkill.sync_status).label}
               </span>

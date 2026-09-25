@@ -7,10 +7,12 @@ import { cn } from "../utils";
 import { useApp } from "../context/AppContext";
 import { AgentIcon } from "../components/AgentIcon";
 import { SkillPickerRow } from "../components/SkillPickerRow";
+import { CreatorBadge } from "../components/CreatorBadge";
 import * as api from "../lib/tauri";
 import type { ManagedSkill, RemoteHost, RemoteProbe, RemoteSkill, ToolInfo } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
 import type { PickerStatus } from "../lib/skillPickerStatus";
+import { skillCreator } from "../lib/skillCreator";
 import { settingsPath } from "./settings/categories";
 
 /** Sources the remote can fetch on its own; anything else lives only here. */
@@ -223,6 +225,7 @@ export function RemoteHostView() {
                       <span className="shrink-0 rounded-full bg-surface-hover px-1.5 py-0.5 text-[11px] font-medium text-muted">
                         {sourceLabel(t, skill.source_type)}
                       </span>
+                      <CreatorBadge creator={skillCreator(skill)} hideLocal className="max-w-[160px] shrink-0" />
                     </div>
                     {skill.description && (
                       <p className="mt-0.5 truncate text-[12px] text-muted">{skill.description}</p>
