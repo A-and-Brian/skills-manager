@@ -1870,7 +1870,13 @@ fn convert_project_to_copy(
 }
 
 #[cfg(test)]
+mod test_fixtures;
+
+#[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::test_fixtures::update_vendored_x;
+    use super::test_fixtures::{agent_selection_fixture, keys};
     use super::{
         agent_skill_configs, ensure_distinct_linked_workspace_roots, export_agent_keys,
         new_project_deploy_mode, project_to_dto, reconcile_skill_agents,
@@ -1878,16 +1884,13 @@ mod tests {
     };
     #[cfg(unix)]
     use super::{
-        convert_project_to_copy, delete_skill_copy, plan_project_agent_change,
-        read_workspace_skills, toggle_skill_copy, update_vendored_from_center, vendored_variant,
-        AppError,
+        convert_project_to_copy, delete_skill_copy, plan_project_agent_change, toggle_skill_copy,
     };
     use crate::core::error::ErrorKind;
     #[cfg(unix)]
     use crate::core::project_deploy::{self, SkipReason};
     use crate::core::project_scanner::AgentSkillConfig;
     use crate::core::skill_store::{ProjectRecord, SkillStore};
-    use crate::core::test_support::sample_managed_skill;
     use std::fs;
     use std::path::Path;
     use tempfile::tempdir;
@@ -1936,62 +1939,6 @@ mod tests {
 
         assert_eq!(dto.skill_count, 1);
         assert_eq!(dto.sync_health.project_only, 1);
-    }
-
-    /// A store with two custom agents, `agent_a` (`.a/skills`) and `agent_b`
-    /// (`.b/skills`), a library skill `x`, and a project holding `x` for
-    /// agent_a as a link into the library.
-    fn agent_selection_fixture(
-        tmp: &Path,
-        agent_keys: Option<Vec<String>>,
-    ) -> (SkillStore, ProjectRecord) {
-        let store = SkillStore::new(&tmp.join("test.db")).unwrap();
-        let tools = serde_json::json!([
-            { "key": "agent_a", "display_name": "Agent A", "skills_dir": tmp.join("a"),
-              "project_relative_skills_dir": ".a/skills" },
-            { "key": "agent_b", "display_name": "Agent B", "skills_dir": tmp.join("b"),
-              "project_relative_skills_dir": ".b/skills" },
-        ]);
-        store
-            .set_setting("custom_tools", &tools.to_string())
-            .unwrap();
-
-        let library = tmp.join("library").join("x");
-        fs::create_dir_all(&library).unwrap();
-        fs::write(library.join("SKILL.md"), "---\nname: x\n---\n").unwrap();
-        store
-            .insert_skill(&sample_managed_skill(
-                library.to_string_lossy().to_string(),
-                None,
-                0,
-            ))
-            .unwrap();
-
-        let project_path = tmp.join("project");
-        fs::create_dir_all(project_path.join(".a/skills")).unwrap();
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&library, project_path.join(".a/skills/x")).unwrap();
-
-        let record = ProjectRecord {
-            id: "project-1".to_string(),
-            name: "Project".to_string(),
-            path: project_path.to_string_lossy().to_string(),
-            workspace_type: "project".to_string(),
-            linked_agent_key: None,
-            linked_agent_name: None,
-            disabled_path: None,
-            sort_order: 0,
-            created_at: 0,
-            updated_at: 0,
-            agent_keys,
-            deploy_mode: "link".to_string(),
-        };
-        store.insert_project(&record).unwrap();
-        (store, record)
-    }
-
-    fn keys(items: &[&str]) -> Vec<String> {
-        items.iter().map(|item| item.to_string()).collect()
     }
 
     #[test]
@@ -2129,19 +2076,6 @@ mod tests {
         assert_eq!(plan.skills[0].removes, keys(&["agent_a"]));
         assert_eq!(plan.skills[0].skipped.len(), 1);
         assert_eq!(plan.skills[0].skipped[0].reason, SkipReason::SharedDir);
-    }
-
-    #[cfg(unix)]
-    /// Update `x` the way the command does when asked through agent_a's link.
-    fn update_vendored_x(store: &SkillStore, record: &ProjectRecord) -> Result<(), AppError> {
-        let skills = read_workspace_skills(record, &agent_skill_configs(store));
-        let link = skills
-            .iter()
-            .find(|skill| skill.agent == "agent_a")
-            .unwrap();
-        let vendored = vendored_variant(record, &skills, link).unwrap();
-        assert_ne!(vendored.path, link.path);
-        update_vendored_from_center(vendored, &store.get_all_skills().unwrap())
     }
 
     /// Pulling from the library replaces only the vendored copy, and in place,
