@@ -9,11 +9,13 @@ use crate::skills::install::{classify_ref, run_install, run_remove, run_search, 
 use crate::skills::list::{
     export_skill, list_skills_filtered, resolve_skill, show_skill, skill_status,
 };
-use crate::{run_adopt, run_check, run_tag, run_update};
+use crate::skills::update::{run_check, run_update};
+use crate::{run_adopt, run_tag};
 
 pub(crate) mod deploy;
 pub(crate) mod install;
 pub(crate) mod list;
+pub(crate) mod update;
 
 pub(crate) fn run_skills(args: SkillsArgs, store: &SkillStore, json: bool) -> anyhow::Result<()> {
     match args.command {
