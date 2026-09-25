@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { ManagedSkill } from "./tauri";
 import {
+  canRefreshSkill,
   filterLibrarySkills,
   groupLibrarySkills,
   libraryCreators,
   libraryFilterCounts,
   NO_TAG_GROUP,
   NOT_DEPLOYED,
+  skillDisplayNames,
   sortLibrarySkills,
+  togglableSkills,
   updateFilterOf,
   type LibraryQuery,
 } from "./librarySkillQuery";
@@ -216,5 +219,62 @@ describe("libraryFilterCounts", () => {
       new Map([[LOCAL_CREATOR, 1], ["github.com/zed", 1], ["author:jane", 1], ["github.com/acme", 2]])
     );
     expect(result.sources).toEqual(new Map([["git", 1], ["skillssh", 1]]));
+  });
+});
+
+describe("skillDisplayNames", () => {
+  it("shows the name when it is unique", () => {
+    const names = skillDisplayNames([skill({ id: "a", name: "Review" }), skill({ id: "b", name: "Docs" })]);
+    expect(names.get("a")).toBe("Review");
+    expect(names.get("b")).toBe("Docs");
+  });
+
+  it("shows the library folder name for duplicated names", () => {
+    const names = skillDisplayNames([
+      skill({ id: "a", name: "Review", central_path: "/lib/review-acme" }),
+      skill({ id: "b", name: "Review", central_path: "C:\\lib\\review-local\\" }),
+    ]);
+    expect(names.get("a")).toBe("review-acme");
+    expect(names.get("b")).toBe("review-local");
+  });
+
+  it("keeps the name when a duplicate's folder already carries it", () => {
+    const names = skillDisplayNames([
+      skill({ id: "a", name: "Review", central_path: "/lib/Review" }),
+      skill({ id: "b", name: "Review", central_path: "/lib/review-2" }),
+    ]);
+    expect(names.get("a")).toBe("Review");
+    expect(names.get("b")).toBe("review-2");
+  });
+});
+
+describe("canRefreshSkill", () => {
+  it("refreshes git and skills.sh skills", () => {
+    expect(canRefreshSkill(skill({ id: "a", source_type: "git" }))).toBe(true);
+    expect(canRefreshSkill(skill({ id: "a", source_type: "skillssh" }))).toBe(true);
+  });
+
+  it("refreshes local and imported skills only with a source_ref", () => {
+    expect(canRefreshSkill(skill({ id: "a", source_type: "local", source_ref: "/src/a" }))).toBe(true);
+    expect(canRefreshSkill(skill({ id: "a", source_type: "import", source_ref: "/src/a" }))).toBe(true);
+    expect(canRefreshSkill(skill({ id: "a", source_type: "local", source_ref: null }))).toBe(false);
+    expect(canRefreshSkill(skill({ id: "a", source_type: "import", source_ref: null }))).toBe(false);
+  });
+});
+
+describe("togglableSkills", () => {
+  const skills = [
+    skill({ id: "on", preset_ids: ["p"] }),
+    skill({ id: "off", preset_ids: [] }),
+    skill({ id: "unselected", preset_ids: [] }),
+  ];
+  const selected = new Set(["on", "off"]);
+
+  it("counts only the selected skills an enable would add", () => {
+    expect(togglableSkills(skills, selected, "p", true).map((s) => s.id)).toEqual(["off"]);
+  });
+
+  it("counts only the selected skills a disable would remove", () => {
+    expect(togglableSkills(skills, selected, "p", false).map((s) => s.id)).toEqual(["on"]);
   });
 });

@@ -50,11 +50,14 @@ import * as api from "../lib/tauri";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
 import { replaceTagInFilters, tagSuggestions } from "../lib/tagFilter";
 import {
+  canRefreshSkill,
   filterLibrarySkills,
   groupLibrarySkills,
   libraryCreators,
   libraryFilterCounts,
+  skillDisplayNames,
   sortLibrarySkills,
+  togglableSkills,
   LIBRARY_GROUP_BY_OPTIONS,
   LIBRARY_SORT_BY_OPTIONS,
   LIBRARY_UPDATE_FILTERS,
@@ -100,10 +103,6 @@ const isGroupBy = (v: string | null): v is LibraryGroupBy =>
   LIBRARY_GROUP_BY_OPTIONS.includes(v as LibraryGroupBy);
 const isSortBy = (v: string | null): v is LibrarySortBy =>
   LIBRARY_SORT_BY_OPTIONS.includes(v as LibrarySortBy);
-
-function centralDirName(skill: ManagedSkill) {
-  return skill.central_path.split(/[\\/]/).filter(Boolean).pop() || skill.name;
-}
 
 export function MySkills() {
   const { t } = useTranslation();
@@ -284,24 +283,7 @@ export function MySkills() {
     setFilterMode("all");
   };
 
-  const skillDisplayNames = useMemo(() => {
-    const nameCounts = new Map<string, number>();
-    for (const skill of skills) {
-      nameCounts.set(skill.name, (nameCounts.get(skill.name) || 0) + 1);
-    }
-
-    const displayNames = new Map<string, string>();
-    for (const skill of skills) {
-      const dirName = centralDirName(skill);
-      displayNames.set(
-        skill.id,
-        (nameCounts.get(skill.name) || 0) > 1 && dirName !== skill.name
-          ? dirName
-          : skill.name
-      );
-    }
-    return displayNames;
-  }, [skills]);
+  const displayNames = useMemo(() => skillDisplayNames(skills), [skills]);
 
   const libraryQuery = useMemo<LibraryQuery>(() => ({
     search: search.toLowerCase(),
@@ -317,8 +299,8 @@ export function MySkills() {
       : undefined,
   }), [search, sourceFilters, tagFilters, agentFilters, creatorFilters, updateFilters, sortBy, groupBy, filterMode, viewedPreset, presetSkillOrder]);
   const displayNameOf = useCallback(
-    (skill: ManagedSkill) => skillDisplayNames.get(skill.id) || skill.name,
-    [skillDisplayNames]
+    (skill: ManagedSkill) => displayNames.get(skill.id) || skill.name,
+    [displayNames]
   );
   const filtered = useMemo(
     () => sortLibrarySkills(filterLibrarySkills(skills, libraryQuery, displayNameOf), libraryQuery),
@@ -702,7 +684,7 @@ export function MySkills() {
   };
 
   const handleBatchRefresh = async () => {
-    const refreshableSkills = skills.filter((skill) => selectedIds.has(skill.id) && canRefresh(skill));
+    const refreshableSkills = skills.filter((skill) => selectedIds.has(skill.id) && canRefreshSkill(skill));
     if (refreshableSkills.length === 0) return;
 
     setBatchUpdating(true);
@@ -745,7 +727,7 @@ export function MySkills() {
 
   const handleUpdateAvailableSkills = async () => {
     const updatableSkills = skills.filter(
-      (skill) => skill.update_status === "update_available" && canRefresh(skill)
+      (skill) => skill.update_status === "update_available" && canRefreshSkill(skill)
     );
     if (updatableSkills.length === 0) return;
 
@@ -1020,35 +1002,26 @@ export function MySkills() {
     }
   };
 
-  const canRefresh = (skill: ManagedSkill) =>
-    skill.source_type === "git" ||
-    skill.source_type === "skillssh" ||
-    ((skill.source_type === "local" || skill.source_type === "import") && !!skill.source_ref);
-
   const anyRefreshableSelected = useMemo(
-    () => skills.some((skill) => selectedIds.has(skill.id) && canRefresh(skill)),
+    () => skills.some((skill) => selectedIds.has(skill.id) && canRefreshSkill(skill)),
     [skills, selectedIds]
   );
   const availableUpdateCount = useMemo(
-    () => skills.filter((skill) => skill.update_status === "update_available" && canRefresh(skill)).length,
+    () => skills.filter((skill) => skill.update_status === "update_available" && canRefreshSkill(skill)).length,
     [skills]
   );
   const refreshableSelectedCount = useMemo(
-    () => skills.filter((skill) => selectedIds.has(skill.id) && canRefresh(skill)).length,
+    () => skills.filter((skill) => selectedIds.has(skill.id) && canRefreshSkill(skill)).length,
     [skills, selectedIds]
   );
   /**
    * Only the selected skills the toggle would actually change — a mixed selection
    * enables the ones that are off, so the button must not count the rest.
    */
-  const togglableSelectedSkills = useMemo(() => {
-    if (!viewedPreset) return [];
-    const enabling = anyDisabled;
-    return skills.filter((skill) => {
-      if (!selectedIds.has(skill.id)) return false;
-      return skill.preset_ids.includes(viewedPreset.id) !== enabling;
-    });
-  }, [skills, selectedIds, viewedPreset, anyDisabled]);
+  const togglableSelectedSkills = useMemo(
+    () => (viewedPreset ? togglableSkills(skills, selectedIds, viewedPreset.id, anyDisabled) : []),
+    [skills, selectedIds, viewedPreset, anyDisabled]
+  );
 
   const sourceTypeLabel = (skill: ManagedSkill) =>
     skill.source_type === "skillssh" ? "skills.sh" : skill.source_type;
@@ -1448,14 +1421,14 @@ export function MySkills() {
                   : false;
                 const badge = statusBadge(skill);
                 const hasUpdate =
-                  skill.update_status === "update_available" && canRefresh(skill);
+                  skill.update_status === "update_available" && canRefreshSkill(skill);
                 // The header pill is hidden in multi-select, so the body badge has to
                 // take over — otherwise the update state vanishes entirely.
                 const showUpdatePill = hasUpdate && !isMultiSelect;
                 const isMissingLocalSource =
                   skill.update_status === "source_missing"
                   && (skill.source_type === "local" || skill.source_type === "import");
-                const displayName = skillDisplayNames.get(skill.id) || skill.name;
+                const displayName = displayNames.get(skill.id) || skill.name;
                 const creator = skillCreator(skill);
 
                 if (viewMode === "grid") {
@@ -1545,7 +1518,7 @@ export function MySkills() {
                                   disabled: checkingSkillId === skill.id,
                                   onSelect: () => handleCheckUpdate(skill),
                                 },
-                                ...(canRefresh(skill)
+                                ...(canRefreshSkill(skill)
                                   ? [{
                                       key: "refresh",
                                       label: refreshLabel(skill),
@@ -1890,7 +1863,7 @@ export function MySkills() {
                               disabled: checkingSkillId === skill.id,
                               onSelect: () => handleCheckUpdate(skill),
                             },
-                            ...(canRefresh(skill)
+                            ...(canRefreshSkill(skill)
                               ? [{
                                   key: "refresh",
                                   label: refreshLabel(skill),

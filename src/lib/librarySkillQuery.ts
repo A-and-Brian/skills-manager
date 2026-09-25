@@ -232,3 +232,55 @@ export function groupLibrarySkills(skills: readonly ManagedSkill[], groupBy: Lib
     return groupBy === "creator" ? nameOf(a).localeCompare(nameOf(b)) : 0;
   });
 }
+
+function centralDirName(skill: ManagedSkill) {
+  return skill.central_path.split(/[\\/]/).filter(Boolean).pop() || skill.name;
+}
+
+/**
+ * The name to show for each skill id. Skills that share a name show their
+ * library folder name instead, so the duplicates can be told apart.
+ */
+export function skillDisplayNames(skills: readonly ManagedSkill[]): Map<string, string> {
+  const nameCounts = new Map<string, number>();
+  for (const skill of skills) {
+    nameCounts.set(skill.name, (nameCounts.get(skill.name) || 0) + 1);
+  }
+
+  const displayNames = new Map<string, string>();
+  for (const skill of skills) {
+    const dirName = centralDirName(skill);
+    displayNames.set(
+      skill.id,
+      (nameCounts.get(skill.name) || 0) > 1 && dirName !== skill.name
+        ? dirName
+        : skill.name
+    );
+  }
+  return displayNames;
+}
+
+/** Git and skills.sh skills can always be updated; local and imported ones only if they remember their source. */
+export function canRefreshSkill(skill: ManagedSkill): boolean {
+  return (
+    skill.source_type === "git" ||
+    skill.source_type === "skillssh" ||
+    ((skill.source_type === "local" || skill.source_type === "import") && !!skill.source_ref)
+  );
+}
+
+/**
+ * Only the selected skills a preset toggle would actually change: when
+ * enabling, the ones not yet in the preset; when disabling, the ones in it.
+ */
+export function togglableSkills(
+  skills: readonly ManagedSkill[],
+  selectedIds: ReadonlySet<string>,
+  presetId: string,
+  enabling: boolean,
+): ManagedSkill[] {
+  return skills.filter((skill) => {
+    if (!selectedIds.has(skill.id)) return false;
+    return skill.preset_ids.includes(presetId) !== enabling;
+  });
+}
