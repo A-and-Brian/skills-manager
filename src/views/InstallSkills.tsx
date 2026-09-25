@@ -28,7 +28,7 @@ import { toast } from "sonner";
 import { cn } from "../utils";
 import { useApp } from "../context/AppContext";
 import * as api from "../lib/tauri";
-import type { ScanResult, SkillsShSkill, BatchImportResult, GitPreviewResult } from "../lib/tauri";
+import type { ScanResult, SkillsShSkill, BatchImportResult } from "../lib/tauri";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { InstallTab } from "./installSearch";
@@ -37,6 +37,7 @@ import { pickPath } from "../lib/pickPath";
 import { filterMarketSkills, paginateMarketSkills } from "../lib/marketSearch";
 import { MARKET_SEARCH_STEP, useMarketSearch } from "../hooks/useMarketSearch";
 import { useSourceOverflow } from "../hooks/useSourceOverflow";
+import { useGitPreview } from "../hooks/useGitPreview";
 import { findInstalledByGitUrl as findInstalledSkillByGitUrl } from "../lib/gitUrl";
 import { StatusBanner } from "../components/StatusBanner";
 import { getErrorMessage, getErrorKind } from "../lib/error";
@@ -69,13 +70,19 @@ export function InstallSkills() {
     sourceOptions,
   } = useMarketSearch(activeTab === "market");
   const [installing, setInstalling] = useState<string | null>(null);
-  const [gitUrl, setGitUrl] = useState("");
-  const [gitLoading, setGitLoading] = useState(false);
-  const [gitCancelKey, setGitCancelKey] = useState<string | null>(null);
-  const [gitPreview, setGitPreview] = useState<GitPreviewResult | null>(null);
-  const [gitPreviewRepoUrl, setGitPreviewRepoUrl] = useState<string | null>(null);
-  const [gitSelections, setGitSelections] = useState<{ rel_path: string; name: string; description: string | null; selected: boolean }[]>([]);
-  const [gitConfirmLoading, setGitConfirmLoading] = useState(false);
+  const {
+    gitUrl,
+    setGitUrl,
+    gitLoading,
+    gitCancelKey,
+    gitPreview,
+    gitSelections,
+    setGitSelections,
+    gitConfirmLoading,
+    handleGitPreview,
+    handleGitPreviewClose,
+    handleGitConfirm,
+  } = useGitPreview();
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanLoading, setScanLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -343,88 +350,6 @@ export function InstallSkills() {
     api.cancelInstall(cancelKey).catch(() => {
       // Ignore race: install may have completed before cancel request arrives.
     });
-  };
-
-  const handleGitPreview = async () => {
-    if (!gitUrl.trim()) return;
-    setGitLoading(true);
-    const url = gitUrl.trim();
-    setGitCancelKey(url);
-
-    const toastId = toast.loading(t("install.toast.cloning"));
-    let unlisten: (() => void) | null = null;
-
-    try {
-      unlisten = await listenOnActiveHost<{ skill_id: string; phase: string; detail?: string }>(
-        "install-progress",
-        (event) => {
-          if (event.payload.skill_id !== url) return;
-          if (event.payload.phase === "cloning") {
-            const detail = event.payload.detail?.trim();
-            const msg = detail
-              ? `${t("install.toast.cloning")}\n${detail}`
-              : t("install.toast.cloning");
-            toast.loading(msg, { id: toastId });
-          }
-        }
-      );
-      const preview = await api.previewGitInstall(url);
-      toast.dismiss(toastId);
-      setGitPreview(preview);
-      setGitPreviewRepoUrl(url);
-      setGitSelections(preview.skills.map((s) => ({
-        rel_path: s.rel_path,
-        name: s.name,
-        description: s.description,
-        selected: true,
-      })));
-    } catch (error: unknown) {
-      if (getErrorKind(error) === "cancelled") {
-        toast.info(t("install.toast.cancelled"), { id: toastId });
-      } else {
-        toast.error(getErrorMessage(error, t("common.error")), { id: toastId });
-      }
-    } finally {
-      setGitLoading(false);
-      setGitCancelKey(null);
-      unlisten?.();
-    }
-  };
-
-  const handleGitPreviewClose = () => {
-    if (gitConfirmLoading) return;
-    if (gitPreview) {
-      api.cancelGitPreview(gitPreview.temp_dir).catch(() => {});
-    }
-    setGitPreview(null);
-    setGitPreviewRepoUrl(null);
-    setGitSelections([]);
-  };
-
-  const handleGitConfirm = async () => {
-    if (!gitPreview) return;
-    const repoUrl = gitPreviewRepoUrl ?? gitUrl.trim();
-    if (!repoUrl) return;
-    const selected = gitSelections.filter((s) => s.selected);
-    if (selected.length === 0) return;
-    setGitConfirmLoading(true);
-    try {
-      await api.confirmGitInstall(
-        repoUrl,
-        gitPreview.temp_dir,
-        selected.map((s) => ({ rel_path: s.rel_path, name: s.name }))
-      );
-      await Promise.all([refreshPresets(), refreshManagedSkills()]);
-      toast.success(t("install.toast.success", { name: selected.map((s) => s.name).join(", ") }));
-      setGitUrl("");
-      setGitPreview(null);
-      setGitPreviewRepoUrl(null);
-      setGitSelections([]);
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, t("common.error")));
-    } finally {
-      setGitConfirmLoading(false);
-    }
   };
 
   const handleImportDiscovered = async (sourcePath: string, name: string) => {
