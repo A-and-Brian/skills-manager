@@ -237,6 +237,10 @@ Once changesets land on `main`, the **Version** workflow opens a `chore: version
 
 [Open an issue](https://github.com/A-and-Brian/skills-manager/issues), and attach the bundle from **Settings → Export Logs**.
 
+## Support
+
+Skills Manager is free and open source. If it saves you time, you can support its development through [GitHub Sponsors](https://github.com/sponsors/A-and-Brian), once a month or as a one-off.
+
 ## Credits
 
 Skills Manager began as a fork of [xingkongliang/skills-manager](https://github.com/xingkongliang/skills-manager). Most of the app — and the history in [CHANGELOG.md](CHANGELOG.md) up to 1.40.0 — is their work.
