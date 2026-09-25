@@ -25,6 +25,7 @@ import { useApp } from "../context/AppContext";
 import { useMultiSelect } from "../hooks/useMultiSelect";
 import { useProjectSkills } from "../hooks/useProjectSkills";
 import { useLastUsedExportAgents } from "../hooks/useLastUsedExportAgents";
+import { useProjectAgentTargets } from "../hooks/useProjectAgentTargets";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { MultiSelectToolbar } from "../components/MultiSelectToolbar";
 import { BatchTagDialog } from "../components/BatchTagDialog";
@@ -47,7 +48,7 @@ import {
 import { copyCreator } from "../lib/skillCreator";
 import { cn } from "../utils";
 import * as api from "../lib/tauri";
-import type { ProjectSkill, ManagedSkill, ProjectAgentTarget } from "../lib/tauri";
+import type { ProjectSkill, ManagedSkill } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
 import { AddSkillsSheet } from "../components/AddSkillsSheet";
 import { ProjectAgentsDialog } from "../components/ProjectAgentsDialog";
@@ -57,7 +58,6 @@ export function ProjectDetail() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { projects, presets, managedSkills, refreshManagedSkills, refreshPresets, refreshProjects } = useApp();
-  const [projectAgentTargets, setProjectAgentTargets] = useState<ProjectAgentTarget[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [filterMode, setFilterMode] = useState<"all" | "enabled" | "disabled">("all");
   const [search, setSearch] = useState("");
@@ -97,8 +97,6 @@ export function ProjectDetail() {
   };
 
   const project = projects.find((p) => p.id === id);
-  // Targets carry the selection, so they reload when it changes.
-  const agentKeysSignal = JSON.stringify(project?.agent_keys ?? null);
   const getSkillKey = useCallback((skill: Pick<ProjectSkillGroup, "id">) => {
     return skill.id;
   }, []);
@@ -114,24 +112,7 @@ export function ProjectDetail() {
     setCenterDocContent(null);
   }, [id]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadProjectAgentTargets = async () => {
-      if (!id) return;
-      try {
-        const result = await api.getProjectAgentTargets(id);
-        if (!cancelled) {
-          setProjectAgentTargets(result);
-        }
-      } catch (e) {
-        console.error("Failed to load project agent targets:", e);
-      }
-    };
-    loadProjectAgentTargets();
-    return () => {
-      cancelled = true;
-    };
-  }, [id, agentKeysSignal]);
+  const projectAgentTargets = useProjectAgentTargets(id, project?.agent_keys ?? null);
 
   useEffect(() => {
     if (!project && !loading) {
