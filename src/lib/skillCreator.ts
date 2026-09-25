@@ -73,6 +73,14 @@ export function skillCreator(skill: CreatorSource): SkillCreator {
   return name ? { kind: "author", name } : { kind: "local" };
 }
 
+/**
+ * A project or workspace copy is credited like the library skill it matches,
+ * else by its own frontmatter author.
+ */
+export function copyCreator(library: CreatorSource | undefined, author: string | null | undefined): SkillCreator {
+  return skillCreator(library ?? { source_type: "local", source_ref: null, author });
+}
+
 /** The owner or author name, for sorting; empty for local. */
 export function creatorName(creator: SkillCreator): string {
   if (creator.kind === "github" || creator.kind === "host") return creator.owner;

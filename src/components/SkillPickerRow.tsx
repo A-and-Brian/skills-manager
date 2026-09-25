@@ -5,6 +5,8 @@ import { cn } from "../utils";
 import type { ManagedSkill } from "../lib/tauri";
 import type { PickerStatus } from "../lib/skillPickerStatus";
 import { getTagColor } from "../lib/skillTags";
+import { skillCreator } from "../lib/skillCreator";
+import { CreatorBadge } from "./CreatorBadge";
 
 interface Props {
   skill: ManagedSkill;
@@ -81,6 +83,7 @@ export function SkillPickerRow({
           <span className="shrink-0 rounded-full bg-surface-hover px-1.5 py-0.5 text-[11px] font-medium text-muted">
             {sourceLabel}
           </span>
+          <CreatorBadge creator={skillCreator(skill)} hideLocal className="max-w-[160px] shrink-0" />
         </div>
         {skill.description && (
           <div className="mt-0.5 truncate text-[12px] text-muted">{skill.description}</div>
