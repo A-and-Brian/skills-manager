@@ -17,6 +17,7 @@ pub mod host_dispatch;
 pub mod install_cancel;
 pub mod installer;
 pub mod log_sanitize;
+pub mod managed_skill;
 pub mod merge;
 pub mod migrations;
 pub mod panic_log;
