@@ -35,6 +35,7 @@ pub mod skill_auto_updater;
 pub mod skill_delete;
 pub mod skill_install;
 pub mod skill_metadata;
+pub mod skill_source;
 pub mod skill_store;
 pub mod skill_tags;
 pub mod skillssh_api;
