@@ -1047,7 +1047,7 @@ fn list_skills_filtered(
     Ok(list_skills(store)?
         .into_iter()
         .filter(|skill| {
-            query.as_ref().map_or(true, |needle| {
+            query.as_ref().is_none_or(|needle| {
                 skill.name.to_lowercase().contains(needle)
                     || skill
                         .description
@@ -1063,15 +1063,15 @@ fn list_skills_filtered(
         .filter(|skill| {
             preset_id
                 .as_ref()
-                .map_or(true, |id| skill.preset_ids.contains(id))
+                .is_none_or(|id| skill.preset_ids.contains(id))
         })
         .filter(|skill| {
-            deployed_to.as_ref().map_or(true, |agent| {
-                skill.deployed_to.iter().any(|key| key == agent)
-            })
+            deployed_to
+                .as_ref()
+                .is_none_or(|agent| skill.deployed_to.iter().any(|key| key == agent))
         })
         .filter(|skill| {
-            source.as_ref().map_or(true, |needle| {
+            source.as_ref().is_none_or(|needle| {
                 skill.source_type.to_lowercase().contains(needle)
                     || skill
                         .source_ref
@@ -2056,6 +2056,7 @@ fn run_adopt(
     // before any filesystem work. parse_git_source pulls a subpath out of GitHub
     // /tree/branch/path URLs; --git-subpath is the explicit override (pass ""
     // to mean "skill lives at the repo root").
+    #[allow(clippy::type_complexity)]
     let resolved_git: Option<(String, Option<String>, Option<String>, Option<String>)> =
         if let Some(url) = git_url {
             git_fetcher::validate_git_url(url)?;
@@ -3228,7 +3229,7 @@ mod tests {
             project_relative_skills_dir: None,
             category: ToolCategory::Coding,
         };
-        tool_service::set_custom_tools(&store, &[test_agent.clone()]).unwrap();
+        tool_service::set_custom_tools(&store, std::slice::from_ref(&test_agent)).unwrap();
         store.set_setting("sync_mode", "copy").unwrap();
         store
             .insert_skill(&SkillRecord {
