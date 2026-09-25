@@ -34,6 +34,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { InstallTab } from "./installSearch";
 import { listenOnActiveHost } from "../lib/hostEvents";
 import { pickPath } from "../lib/pickPath";
+import { findInstalledByGitUrl as findInstalledSkillByGitUrl } from "../lib/gitUrl";
 import { StatusBanner } from "../components/StatusBanner";
 import { getErrorMessage, getErrorKind } from "../lib/error";
 
@@ -144,14 +145,10 @@ export function InstallSkills() {
     return set;
   }, [managedSkills]);
 
-  const findInstalledByGitUrl = useCallback((url: string) => {
-    const trimmed = url.trim().replace(/\.git$/, "").toLowerCase();
-    return managedSkills.find((s) => {
-      if (!s.source_ref) return false;
-      const ref = s.source_ref.replace(/\.git$/, "").toLowerCase();
-      return ref === trimmed || ref.endsWith("/" + trimmed.split("/").slice(-2).join("/"));
-    });
-  }, [managedSkills]);
+  const findInstalledByGitUrl = useCallback(
+    (url: string) => findInstalledSkillByGitUrl(managedSkills, url),
+    [managedSkills]
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {

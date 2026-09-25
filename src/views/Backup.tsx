@@ -30,10 +30,17 @@ import { GitRecoveryDialog } from "../components/GitRecoveryDialog";
 import { GitSetupDialog } from "../components/GitSetupDialog";
 import { LocalBackupNotice } from "../components/LocalBackupNotice";
 import { useApp } from "../context/AppContext";
-import { getErrorKind, getErrorMessage } from "../lib/error";
+import { getErrorMessage } from "../lib/error";
 import { displaySnapshotLabel, formatBytes, formatSnapshotWhen } from "../lib/backupFormat";
 import { gitBackupMode, pendingBreakdown } from "../lib/gitBackupMode";
-import { mapGitErrorMessage } from "../lib/gitErrors";
+import {
+  isAuthFailureMessage,
+  isRecoverableSetupError,
+  isSyncConflictError,
+  mapGitErrorMessage,
+  mapGithubErrorMessage,
+} from "../lib/gitErrors";
+import { githubRepoWebUrl as toGithubRepoWebUrl } from "../lib/gitUrl";
 import * as api from "../lib/tauri";
 import type {
   GitBackupSizeReport,
@@ -105,25 +112,6 @@ export function Backup() {
     (error: unknown) => mapGitErrorMessage(error, t),
     [t],
   );
-
-  const isSyncConflictError = (error: unknown) => {
-    const message = getErrorMessage(error, "");
-    return message.includes("SYNC_CONFLICT") || message.includes("CONFLICT");
-  };
-
-  const isRecoverableSetupError = (error: unknown) => {
-    const message = getErrorMessage(error, "");
-    return (
-      message.includes("unrelated histories")
-      || message.includes("refusing to merge")
-      || message.includes("[rejected]")
-      || message.includes("non-fast-forward")
-      || message.includes("fetch first")
-      || message.includes("failed to push some refs")
-      || message.includes("no upstream")
-      || isSyncConflictError(error)
-    );
-  };
 
   const refreshGitStatus = useCallback(async (fetchRemote = false) => {
     try {
@@ -503,19 +491,7 @@ export function Backup() {
     return fromPath || conflict.skill_id.slice(0, 8);
   };
 
-  const mapGithubError = (error: unknown) => {
-    const message = getErrorMessage(error, "");
-    if (message.includes("GITHUB_TOKEN_INVALID")) return t("backup.github.errorToken");
-    if (message.includes("GITHUB_SCOPE")) return t("backup.github.errorScope");
-    if (message.includes("KEYCHAIN_UNAVAILABLE")) return t("backup.github.errorKeychain");
-    if (message.includes("GITHUB_DEVICE_EXPIRED")) return t("backup.github.deviceExpired");
-    if (message.includes("GITHUB_DEVICE_DENIED")) return t("backup.github.deviceDenied");
-    if (message.includes("GITHUB_NETWORK") || getErrorKind(error) === "network") {
-      // §3.2: when github.com is unreachable, point at the PAT fallback too.
-      return `${t("settings.gitErrorNetwork")} ${t("backup.github.deviceFallbackPat")}`;
-    }
-    return mapGitError(error);
-  };
+  const mapGithubError = (error: unknown) => mapGithubErrorMessage(error, t);
 
   /** Shared tail of both connect paths: wire the repo locally and either
    * restore the existing backup or push the first one. */
@@ -672,17 +648,10 @@ export function Backup() {
   const GITHUB_OAUTH_CLIENT_ID = "Ov23li4a3SMdhIiKo7IE";
   const remoteUrlValue = gitStatus?.remote_url || remoteConfig || "";
   const isGithubRemote = remoteUrlValue.includes("github.com");
-  const githubRepoWebUrl = (() => {
-    const match = remoteUrlValue.match(/github\.com[/:]([^/]+\/[^/]+?)(\.git)?$/);
-    return match ? `https://github.com/${match[1]}` : null;
-  })();
+  const githubRepoWebUrl = toGithubRepoWebUrl(remoteUrlValue);
   // Token revoked/expired on the GitHub side → offer an explicit reconnect
   // instead of only a failure card (backup redesign Phase 2 待办).
-  const authErrorNeedsReconnect =
-    isGithubRemote
-    && /authentication failed|401|403|invalid.{0,24}(credentials|token)|could not read username/i.test(
-      backupErrorRaw,
-    );
+  const authErrorNeedsReconnect = isGithubRemote && isAuthFailureMessage(backupErrorRaw);
 
   // §3.1 row 2: revoking is done on GitHub's side (a public device-flow app
   // has no client secret, so tokens cannot be revoked via API) — open the
