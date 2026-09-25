@@ -6,9 +6,9 @@ use anyhow::{anyhow, bail, Context};
 use app_lib::commands::{presets as preset_cmd, skills as cmd, tools as tool_cmd};
 use app_lib::core::{
     app_state, audit_log::AuditDraft, central_repo, error::AppError, git_backup, git_fetcher,
-    installer, merge, repo_lock::RepoLock, scenario_service, serve, skill_delete, skill_metadata,
-    skill_store::SkillStore, skill_tags, skillssh_api, sync_engine, sync_metadata, tool_adapters,
-    tool_service,
+    installer, merge, repo_lock::RepoLock, scenario_service, serve, skill_delete, skill_install,
+    skill_metadata, skill_store::SkillStore, skill_tags, skillssh_api, sync_engine, sync_metadata,
+    tool_adapters, tool_service,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
@@ -1552,7 +1552,7 @@ fn install_local_action(
 
     let _lock = RepoLock::acquire_foreground("cli install local")?;
     let result = installer::install_from_local(&path, name)?;
-    let metadata = cmd::InstallSourceMetadata {
+    let metadata = skill_install::InstallSourceMetadata {
         source_type: "local".to_string(),
         source_ref: Some(path.to_string_lossy().to_string()),
         source_ref_resolved: None,
@@ -1564,8 +1564,9 @@ fn install_local_action(
     };
     let central_path = result.central_path.to_string_lossy().to_string();
     let install_name = result.name.clone();
-    let skill_id = cmd::store_installed_skill_unlocked(store, &result, &metadata, active_scenario)
-        .map_err(map_app_err)?;
+    let skill_id =
+        skill_install::store_installed_skill_unlocked(store, &result, &metadata, active_scenario)
+            .map_err(map_app_err)?;
     Ok((skill_id, install_name, central_path, "local".to_string()))
 }
 
@@ -1589,11 +1590,12 @@ fn install_git_action(
     )?;
     let result = (|| -> anyhow::Result<(String, String, String)> {
         let _lock = RepoLock::acquire_foreground("cli install git")?;
-        let skill_dir = cmd::resolve_skill_dir(&temp_dir, parsed.subpath.as_deref(), None)
-            .map_err(map_app_err)?;
+        let skill_dir =
+            skill_install::resolve_skill_dir(&temp_dir, parsed.subpath.as_deref(), None)
+                .map_err(map_app_err)?;
         let revision = git_fetcher::get_head_revision(&temp_dir)?;
         let install_result = installer::install_from_git_dir(&skill_dir, name)?;
-        let metadata = cmd::InstallSourceMetadata {
+        let metadata = skill_install::InstallSourceMetadata {
             source_type: "git".to_string(),
             source_ref: Some(parsed.original_url.clone()),
             source_ref_resolved: Some(parsed.clone_url.clone()),
@@ -1605,9 +1607,13 @@ fn install_git_action(
         };
         let central_path = install_result.central_path.to_string_lossy().to_string();
         let install_name = install_result.name.clone();
-        let skill_id =
-            cmd::store_installed_skill_unlocked(store, &install_result, &metadata, active_scenario)
-                .map_err(map_app_err)?;
+        let skill_id = skill_install::store_installed_skill_unlocked(
+            store,
+            &install_result,
+            &metadata,
+            active_scenario,
+        )
+        .map_err(map_app_err)?;
         Ok((skill_id, install_name, central_path))
     })();
     git_fetcher::cleanup_temp(&temp_dir);
@@ -1628,16 +1634,16 @@ fn install_skillssh_action(
         git_fetcher::clone_repo_ref(&repo_url, None, Some(&cancel), proxy_url.as_deref())?;
     let result = (|| -> anyhow::Result<(String, String, String)> {
         let _lock = RepoLock::acquire_foreground("cli install skillssh")?;
-        let skill_dir =
-            cmd::resolve_skill_dir(&temp_dir, None, Some(&skill_id_field)).map_err(map_app_err)?;
+        let skill_dir = skill_install::resolve_skill_dir(&temp_dir, None, Some(&skill_id_field))
+            .map_err(map_app_err)?;
         let revision = git_fetcher::get_head_revision(&temp_dir)?;
         let source_ref = format!("{}/{}", source, skill_id_field);
         let (install_name, destination) =
-            cmd::resolve_skillssh_install_target(store, &source_ref, &skill_id_field)
+            skill_install::resolve_skillssh_install_target(store, &source_ref, &skill_id_field)
                 .map_err(map_app_err)?;
         let install_result =
             installer::install_skill_dir_to_destination(&skill_dir, &install_name, &destination)?;
-        let metadata = cmd::InstallSourceMetadata {
+        let metadata = skill_install::InstallSourceMetadata {
             source_type: "skillssh".to_string(),
             source_ref: Some(source_ref),
             source_ref_resolved: Some(repo_url.clone()),
@@ -1648,9 +1654,13 @@ fn install_skillssh_action(
             update_status: "up_to_date".to_string(),
         };
         let central_path = install_result.central_path.to_string_lossy().to_string();
-        let skill_id =
-            cmd::store_installed_skill_unlocked(store, &install_result, &metadata, active_scenario)
-                .map_err(map_app_err)?;
+        let skill_id = skill_install::store_installed_skill_unlocked(
+            store,
+            &install_result,
+            &metadata,
+            active_scenario,
+        )
+        .map_err(map_app_err)?;
         Ok((skill_id, install_name, central_path))
     })();
     git_fetcher::cleanup_temp(&temp_dir);
@@ -2179,7 +2189,7 @@ fn run_adopt(
         let _lock = RepoLock::acquire_foreground("cli adopt")?;
         let result = installer::install_from_local(&dir, None)?;
         let metadata = if let Some((clone_url, subpath, branch, original_url)) = &resolved_git {
-            cmd::InstallSourceMetadata {
+            skill_install::InstallSourceMetadata {
                 source_type: "git".to_string(),
                 source_ref: original_url.clone(),
                 source_ref_resolved: Some(clone_url.clone()),
@@ -2190,7 +2200,7 @@ fn run_adopt(
                 update_status: "unknown".to_string(),
             }
         } else {
-            cmd::InstallSourceMetadata {
+            skill_install::InstallSourceMetadata {
                 source_type: "local".to_string(),
                 source_ref: Some(dir.to_string_lossy().to_string()),
                 source_ref_resolved: None,
@@ -2204,8 +2214,9 @@ fn run_adopt(
         let central_path = result.central_path.to_string_lossy().to_string();
         let install_name = result.name.clone();
         let source_type = metadata.source_type.clone();
-        let skill_id = cmd::store_installed_skill_unlocked(store, &result, &metadata, None)
-            .map_err(map_app_err)?;
+        let skill_id =
+            skill_install::store_installed_skill_unlocked(store, &result, &metadata, None)
+                .map_err(map_app_err)?;
         adopted.push(InstallReport {
             ok: true,
             skill_id,

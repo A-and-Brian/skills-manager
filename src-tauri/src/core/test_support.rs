@@ -65,3 +65,12 @@ pub(crate) fn sample_skill(id: &str, name: &str, central_path: &Path) -> SkillRe
         last_check_error: None,
     }
 }
+
+pub(crate) fn write_skill(dir: &Path, name: &str) {
+    fs::create_dir_all(dir).unwrap();
+    fs::write(
+        dir.join("SKILL.md"),
+        format!("---\nname: {name}\ndescription: d\n---\nbody\n"),
+    )
+    .unwrap();
+}
