@@ -4,6 +4,7 @@ import {
   filterLibrarySkills,
   groupLibrarySkills,
   libraryCreators,
+  libraryFilterCounts,
   NO_TAG_GROUP,
   NOT_DEPLOYED,
   sortLibrarySkills,
@@ -178,5 +179,44 @@ describe("libraryCreators", () => {
       ["github.com/zed", 1],
       [LOCAL_CREATOR, 1],
     ]);
+  });
+});
+
+describe("libraryFilterCounts", () => {
+  const all = [docx, pdf, notes];
+  const counts = (skills: ManagedSkill[], overrides: Partial<LibraryQuery> = {}) =>
+    libraryFilterCounts(skills, query(overrides), displayName);
+
+  it("counts an option against the other categories, not its own", () => {
+    const withCodex = counts(all, { agents: new Set(["codex"]) });
+    expect(withCodex.agents).toEqual(new Map([["claude", 2], ["codex", 1], [NOT_DEPLOYED, 1]]));
+    expect(withCodex.tags).toEqual(new Map([["docs", 1], ["office", 1]]));
+    expect(withCodex.sources).toEqual(new Map([["git", 1]]));
+  });
+
+  it("counts untagged and undeployed skills under their sentinels", () => {
+    const result = counts(all);
+    expect(result.tags.get(UNTAGGED)).toBe(1);
+    expect(result.agents.get(NOT_DEPLOYED)).toBe(1);
+  });
+
+  it("leaves skills with no update state out of the update counts", () => {
+    expect(counts([docx, byAcme, byZed]).updates).toEqual(new Map([["up_to_date", 1]]));
+  });
+
+  it("applies search and preset mode like the list does", () => {
+    expect(counts(all, { search: "pdf" }).tags).toEqual(new Map([["docs", 1]]));
+    const inPreset = skill({ id: "a", source_type: "local", preset_ids: ["p1"] });
+    const out = skill({ id: "b" });
+    const preset = { id: "p1", order: [], mode: "enabled" as const };
+    expect(counts([inPreset, out], { preset }).sources).toEqual(new Map([["local", 1]]));
+  });
+
+  it("counts creators by key, Local included", () => {
+    const result = counts(creatorSkills, { creators: new Set(["github.com/acme"]) });
+    expect(result.creators).toEqual(
+      new Map([[LOCAL_CREATOR, 1], ["github.com/zed", 1], ["author:jane", 1], ["github.com/acme", 2]])
+    );
+    expect(result.sources).toEqual(new Map([["git", 1], ["skillssh", 1]]));
   });
 });

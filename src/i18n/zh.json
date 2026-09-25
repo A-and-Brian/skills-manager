@@ -433,6 +433,23 @@
       "up_to_date": "已是最新",
       "local": "本地来源"
     },
+    "filterPopover": {
+      "trigger": "筛选",
+      "triggerCount": "筛选 · {{count}}",
+      "title": "筛选条件",
+      "search": "搜索选项…",
+      "noOptions": "没有匹配的选项",
+      "clear": "清除",
+      "clearAll": "全部清除",
+      "remove": "移除{{category}}筛选",
+      "categories": {
+        "source": "来源",
+        "creator": "创建者",
+        "tag": "标签",
+        "agent": "Agent",
+        "update": "更新状态"
+      }
+    },
     "tags": {
       "filter": "标签",
       "allTags": "全部标签",

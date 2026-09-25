@@ -403,6 +403,23 @@
       "up_to_date": "已是最新",
       "local": "本機來源"
     },
+    "filterPopover": {
+      "trigger": "篩選",
+      "triggerCount": "篩選 · {{count}}",
+      "title": "篩選條件",
+      "search": "搜尋選項…",
+      "noOptions": "沒有符合的選項",
+      "clear": "清除",
+      "clearAll": "全部清除",
+      "remove": "移除{{category}}篩選",
+      "categories": {
+        "source": "來源",
+        "creator": "建立者",
+        "tag": "標籤",
+        "agent": "Agent",
+        "update": "更新狀態"
+      }
+    },
     "tags": {
       "filter": "標籤",
       "allTags": "全部標籤",

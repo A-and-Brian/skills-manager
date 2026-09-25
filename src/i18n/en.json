@@ -433,6 +433,23 @@
       "up_to_date": "Up to date",
       "local": "Local source"
     },
+    "filterPopover": {
+      "trigger": "Filter",
+      "triggerCount": "Filter · {{count}}",
+      "title": "Filters",
+      "search": "Search options…",
+      "noOptions": "No matching options",
+      "clear": "Clear",
+      "clearAll": "Clear all",
+      "remove": "Remove {{category}} filter",
+      "categories": {
+        "source": "Source",
+        "creator": "Creator",
+        "tag": "Tag",
+        "agent": "Agent",
+        "update": "Update status"
+      }
+    },
     "tags": {
       "filter": "Tags",
       "allTags": "All Tags",

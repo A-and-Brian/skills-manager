@@ -43,12 +43,15 @@ import { SyncDots } from "../components/SyncDots";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { CardActionMenu } from "../components/CardActionMenu";
 import { CreatorBadge } from "../components/CreatorBadge";
+import { AgentIcon } from "../components/AgentIcon";
+import { LibraryFilterChips, LibraryFilterPopover, type FilterCategory } from "../components/LibraryFilters";
 import * as api from "../lib/tauri";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
 import {
   filterLibrarySkills,
   groupLibrarySkills,
   libraryCreators,
+  libraryFilterCounts,
   sortLibrarySkills,
   LIBRARY_GROUP_BY_OPTIONS,
   LIBRARY_SORT_BY_OPTIONS,
@@ -60,7 +63,7 @@ import {
   type LibrarySortBy,
   type LibraryUpdateFilter,
 } from "../lib/librarySkillQuery";
-import { LOCAL_CREATOR, skillCreator } from "../lib/skillCreator";
+import { creatorLabel, LOCAL_CREATOR, skillCreator } from "../lib/skillCreator";
 import type {
   ManagedSkill,
   ToolInfo,
@@ -181,11 +184,11 @@ export function MySkills() {
   const [creatorFilters, setCreatorFilters] = useState<Set<string>>(new Set());
   const [updateFilters, setUpdateFilters] = useState<Set<LibraryUpdateFilter>>(new Set());
   // Group and sort are layout preferences, so they persist across launches.
-  // Filter pills are per-session, like search.
+  // Filters are per-session, like search.
   const [groupBy, setGroupBy] = useState<LibraryGroupBy>("none");
   const [sortBy, setSortBy] = useState<LibrarySortBy>("name");
   const [allTags, setAllTags] = useState<string[]>([]);
-  // Tag management from the filter bar (#233): right-click a tag pill to
+  // Tag management from the filter popover (#233): right-click a tag to
   // rename (dialog) or delete (confirm). Left-click stays "filter only".
   const [tagMenu, setTagMenu] = useState<{ tag: string; x: number; y: number } | null>(null);
   const [tagToRename, setTagToRename] = useState<string | null>(null);
@@ -304,8 +307,8 @@ export function MySkills() {
     return next;
   };
 
-  // A filter can outlive the control that set it (the tag row hides itself once
-  // no tag is left), so the empty state carries the way out. `filterMode` is
+  // A filter can outlive the control that set it (the Tag category hides itself
+  // once no tag is left), so the empty state carries the way out. `filterMode` is
   // reset too — its control never hides, but a button labelled "clear filters"
   // that leaves one of them on is a lie.
   const hasActiveFilters =
@@ -316,13 +319,18 @@ export function MySkills() {
     creatorFilters.size > 0 ||
     updateFilters.size > 0 ||
     filterMode !== "all";
-  const clearFilters = () => {
-    setSearch("");
+  // The chip row's "Clear" drops the filter categories but keeps search and
+  // All/Enabled/Available, which have their own controls in the toolbar.
+  const clearFilterCategories = () => {
     setSourceFilters(new Set());
     setTagFilters(new Set());
     setAgentFilters(new Set());
     setCreatorFilters(new Set());
     setUpdateFilters(new Set());
+  };
+  const clearFilters = () => {
+    setSearch("");
+    clearFilterCategories();
     setFilterMode("all");
   };
 
@@ -345,24 +353,32 @@ export function MySkills() {
     return displayNames;
   }, [skills]);
 
-  const filtered = useMemo(() => {
-    const query: LibraryQuery = {
-      search: search.toLowerCase(),
-      sources: sourceFilters,
-      tags: tagFilters,
-      untaggedSentinel: UNTAGGED_FILTER,
-      agents: agentFilters,
-      creators: creatorFilters,
-      updates: updateFilters,
-      sortBy,
-      groupBy,
-      preset: viewedPreset
-        ? { id: viewedPreset.id, order: presetSkillOrder, mode: filterMode }
-        : undefined,
-    };
-    const displayNameOf = (skill: ManagedSkill) => skillDisplayNames.get(skill.id) || skill.name;
-    return sortLibrarySkills(filterLibrarySkills(skills, query, displayNameOf), query);
-  }, [skills, skillDisplayNames, search, sourceFilters, tagFilters, agentFilters, creatorFilters, updateFilters, sortBy, groupBy, filterMode, viewedPreset, presetSkillOrder]);
+  const libraryQuery = useMemo<LibraryQuery>(() => ({
+    search: search.toLowerCase(),
+    sources: sourceFilters,
+    tags: tagFilters,
+    untaggedSentinel: UNTAGGED_FILTER,
+    agents: agentFilters,
+    creators: creatorFilters,
+    updates: updateFilters,
+    sortBy,
+    groupBy,
+    preset: viewedPreset
+      ? { id: viewedPreset.id, order: presetSkillOrder, mode: filterMode }
+      : undefined,
+  }), [search, sourceFilters, tagFilters, agentFilters, creatorFilters, updateFilters, sortBy, groupBy, filterMode, viewedPreset, presetSkillOrder]);
+  const displayNameOf = useCallback(
+    (skill: ManagedSkill) => skillDisplayNames.get(skill.id) || skill.name,
+    [skillDisplayNames]
+  );
+  const filtered = useMemo(
+    () => sortLibrarySkills(filterLibrarySkills(skills, libraryQuery, displayNameOf), libraryQuery),
+    [skills, libraryQuery, displayNameOf]
+  );
+  const filterCounts = useMemo(
+    () => libraryFilterCounts(skills, libraryQuery, displayNameOf),
+    [skills, libraryQuery, displayNameOf]
+  );
   const groups = useMemo(() => groupLibrarySkills(filtered, groupBy), [filtered, groupBy]);
   const creatorOptions = useMemo(() => libraryCreators(skills), [skills]);
 
@@ -1149,6 +1165,102 @@ export function MySkills() {
     return null;
   };
 
+  const filterCategories: FilterCategory[] = [
+    {
+      key: "source",
+      label: t("mySkills.filterPopover.categories.source"),
+      options: (["local", "import", "git", "skillssh"] as const).map((src) => ({
+        key: src,
+        label: t(`mySkills.sourceFilter.${src}`),
+        count: filterCounts.sources.get(src) ?? 0,
+        icon: sourceIcon(src),
+      })),
+      selected: sourceFilters,
+      onToggle: (key) => setSourceFilters((prev) => toggleFilter(prev, key)),
+      onClear: () => setSourceFilters(new Set()),
+    },
+    {
+      key: "creator",
+      label: t("mySkills.filterPopover.categories.creator"),
+      hidden: creatorOptions.length < 2,
+      options: creatorOptions.map(({ key, creator }) => ({
+        key,
+        label: key === LOCAL_CREATOR ? t("mySkills.creator.local") : creatorLabel(creator),
+        count: filterCounts.creators.get(key) ?? 0,
+        badge: <CreatorBadge creator={creator} linked={false} size="md" className="text-secondary" />,
+      })),
+      selected: creatorFilters,
+      onToggle: (key) => setCreatorFilters((prev) => toggleFilter(prev, key)),
+      onClear: () => setCreatorFilters(new Set()),
+    },
+    {
+      key: "tag",
+      label: t("mySkills.filterPopover.categories.tag"),
+      hidden: allTags.length === 0,
+      options: [
+        ...(skills.some((s) => s.tags.length === 0)
+          ? [{
+              key: UNTAGGED_FILTER,
+              label: t("mySkills.tags.untagged"),
+              count: filterCounts.tags.get(UNTAGGED_FILTER) ?? 0,
+              icon: <CircleSlash className="h-3 w-3 shrink-0 text-muted" />,
+            }]
+          : []),
+        ...allTags.map((tag) => ({
+          key: tag,
+          label: tag,
+          count: filterCounts.tags.get(tag) ?? 0,
+          icon: <span className={cn("h-2 w-2 shrink-0 rounded-full", getTagActiveColor(tag, allTags))} />,
+          title: t("mySkills.tags.manageHint"),
+          onContextMenu: (e: React.MouseEvent) => {
+            e.preventDefault();
+            setTagMenu({
+              tag,
+              x: Math.min(e.clientX, window.innerWidth - 160),
+              y: Math.min(e.clientY, window.innerHeight - 90),
+            });
+          },
+        })),
+      ],
+      selected: tagFilters,
+      onToggle: (key) => setTagFilters((prev) => toggleFilter(prev, key)),
+      onClear: () => setTagFilters(new Set()),
+    },
+    {
+      key: "agent",
+      label: t("mySkills.filterPopover.categories.agent"),
+      options: [
+        ...tools.filter((tool) => tool.installed).map((tool) => ({
+          key: tool.key,
+          label: tool.display_name,
+          count: filterCounts.agents.get(tool.key) ?? 0,
+          icon: <AgentIcon agentKey={tool.key} displayName={tool.display_name} className="h-4 w-4 rounded-[3px]" />,
+        })),
+        {
+          key: NOT_DEPLOYED,
+          label: t("mySkills.agentFilter.notDeployed"),
+          count: filterCounts.agents.get(NOT_DEPLOYED) ?? 0,
+          icon: <CircleSlash className="h-3 w-3 shrink-0 text-muted" />,
+        },
+      ],
+      selected: agentFilters,
+      onToggle: (key) => setAgentFilters((prev) => toggleFilter(prev, key)),
+      onClear: () => setAgentFilters(new Set()),
+    },
+    {
+      key: "update",
+      label: t("mySkills.filterPopover.categories.update"),
+      options: LIBRARY_UPDATE_FILTERS.map((bucket) => ({
+        key: bucket,
+        label: t(`mySkills.updateFilter.${bucket}`),
+        count: filterCounts.updates.get(bucket) ?? 0,
+      })),
+      selected: updateFilters,
+      onToggle: (key) => setUpdateFilters((prev) => toggleFilter(prev, key) as Set<LibraryUpdateFilter>),
+      onClear: () => setUpdateFilters(new Set()),
+    },
+  ];
+
   return (
     <div className="app-page">
       <div className="app-page-header pr-2 pb-1 flex items-center justify-between gap-3">
@@ -1192,20 +1304,24 @@ export function MySkills() {
             ))}
           </div>
 
-          <div className="app-segmented app-toolbar-segmented shrink-0" title={t("mySkills.groupBy.label")}>
+          <LibraryFilterPopover
+            categories={filterCategories}
+            onClearAll={clearFilterCategories}
+            holdOpen={tagMenu !== null || tagToRename !== null || tagToDelete !== null}
+          />
+
+          <select
+            value={groupBy}
+            onChange={(e) => chooseGroupBy(e.target.value as LibraryGroupBy)}
+            className="app-input shrink-0 py-2 font-medium"
+            title={t("mySkills.groupBy.label")}
+          >
             {LIBRARY_GROUP_BY_OPTIONS.map((option) => (
-              <button
-                key={option}
-                onClick={() => chooseGroupBy(option)}
-                className={cn(
-                  "app-segmented-button",
-                  groupBy === option && "app-segmented-button-active"
-                )}
-              >
+              <option key={option} value={option}>
                 {t(`mySkills.groupBy.${option}`)}
-              </button>
+              </option>
             ))}
-          </div>
+          </select>
 
           <select
             value={sortBy}
@@ -1297,140 +1413,11 @@ export function MySkills() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1 px-1 -mt-2 -mb-3">
-        {(["local", "import", "git", "skillssh"] as const).map((src) => (
-          <button
-            key={src}
-            onClick={() => setSourceFilters(toggleFilter(sourceFilters, src))}
-            className={cn(
-              "rounded-full px-2.5 py-0.5 text-[12px] font-medium transition-colors",
-              sourceFilters.has(src)
-                ? "bg-accent text-white dark:bg-accent dark:text-white"
-                : "bg-surface-hover text-muted hover:text-secondary"
-            )}
-          >
-            {t(`mySkills.sourceFilter.${src}`)}
-          </button>
-        ))}
-        {creatorOptions.length >= 2 && (
-          <>
-            <span className="mx-0.5 h-3 w-px bg-border-subtle" />
-            {creatorOptions.map(({ key, creator }) => {
-              const isActive = creatorFilters.has(key);
-              const isLocal = key === LOCAL_CREATOR;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setCreatorFilters(toggleFilter(creatorFilters, key))}
-                  className={cn(
-                    "inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium transition-colors",
-                    isLocal
-                      ? isActive
-                        ? "bg-surface-active text-primary"
-                        : "border border-dashed border-border text-muted hover:text-secondary"
-                      : isActive
-                        ? "bg-accent text-white dark:bg-accent dark:text-white"
-                        : "bg-surface-hover text-muted hover:text-secondary"
-                  )}
-                >
-                  <CreatorBadge creator={creator} linked={false} className="text-inherit" />
-                </button>
-              );
-            })}
-          </>
-        )}
-        {allTags.length > 0 && (
-          <>
-            <span className="mx-0.5 h-3 w-px bg-border-subtle" />
-            {skills.some((s) => s.tags.length === 0) && (() => {
-              const isActive = tagFilters.has(UNTAGGED_FILTER);
-              return (
-                <button
-                  onClick={() => setTagFilters(toggleFilter(tagFilters, UNTAGGED_FILTER))}
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] font-medium transition-colors",
-                    isActive
-                      ? "bg-surface-active text-primary"
-                      : "border border-dashed border-border text-muted hover:text-secondary"
-                  )}
-                  title={t("mySkills.tags.untagged")}
-                >
-                  <CircleSlash className="h-3 w-3" />
-                  {t("mySkills.tags.untagged")}
-                </button>
-              );
-            })()}
-            {allTags.map((tag) => {
-              const isActive = tagFilters.has(tag);
-              return (
-                <button
-                  key={tag}
-                  onClick={() => setTagFilters(toggleFilter(tagFilters, tag))}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setTagMenu({
-                      tag,
-                      x: Math.min(e.clientX, window.innerWidth - 160),
-                      y: Math.min(e.clientY, window.innerHeight - 90),
-                    });
-                  }}
-                  title={t("mySkills.tags.manageHint")}
-                  className={cn(
-                    "rounded-full px-2.5 py-0.5 text-[12px] font-medium transition-colors",
-                    isActive ? getTagActiveColor(tag, allTags) : getTagColor(tag, allTags)
-                  )}
-                >
-                  {tag}
-                </button>
-              );
-            })}
-          </>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1 px-1 -mt-2 -mb-3">
-        {tools.filter((tool) => tool.installed).map((tool) => (
-          <button
-            key={tool.key}
-            onClick={() => setAgentFilters(toggleFilter(agentFilters, tool.key))}
-            className={cn(
-              "rounded-full px-2.5 py-0.5 text-[12px] font-medium transition-colors",
-              agentFilters.has(tool.key)
-                ? "bg-accent text-white dark:bg-accent dark:text-white"
-                : "bg-surface-hover text-muted hover:text-secondary"
-            )}
-          >
-            {tool.display_name}
-          </button>
-        ))}
-        <button
-          onClick={() => setAgentFilters(toggleFilter(agentFilters, NOT_DEPLOYED))}
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] font-medium transition-colors",
-            agentFilters.has(NOT_DEPLOYED)
-              ? "bg-surface-active text-primary"
-              : "border border-dashed border-border text-muted hover:text-secondary"
-          )}
-        >
-          <CircleSlash className="h-3 w-3" />
-          {t("mySkills.agentFilter.notDeployed")}
-        </button>
-        <span className="mx-0.5 h-3 w-px bg-border-subtle" />
-        {LIBRARY_UPDATE_FILTERS.map((bucket) => (
-          <button
-            key={bucket}
-            onClick={() => setUpdateFilters(toggleFilter(updateFilters, bucket) as Set<LibraryUpdateFilter>)}
-            className={cn(
-              "rounded-full px-2.5 py-0.5 text-[12px] font-medium transition-colors",
-              updateFilters.has(bucket)
-                ? "bg-accent text-white dark:bg-accent dark:text-white"
-                : "bg-surface-hover text-muted hover:text-secondary"
-            )}
-          >
-            {t(`mySkills.updateFilter.${bucket}`)}
-          </button>
-        ))}
-      </div>
+      <LibraryFilterChips
+        categories={filterCategories}
+        onClearAll={clearFilterCategories}
+        className="-mt-3 -mb-2 px-1"
+      />
 
       {isMultiSelect && (
         <MultiSelectToolbar

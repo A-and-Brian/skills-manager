@@ -117,6 +117,44 @@ export function filterLibrarySkills(
   });
 }
 
+export interface LibraryFilterCounts {
+  sources: Map<string, number>;
+  /** Tag names, plus the untagged sentinel. */
+  tags: Map<string, number>;
+  /** Agent keys, plus NOT_DEPLOYED. */
+  agents: Map<string, number>;
+  creators: Map<string, number>;
+  updates: Map<LibraryUpdateFilter, number>;
+}
+
+/**
+ * How many skills each filter option would match. Every category is counted
+ * with search, preset mode and the other categories applied but its own
+ * selection ignored, so a number reads as "what ticking this adds".
+ */
+export function libraryFilterCounts(
+  skills: readonly ManagedSkill[],
+  q: LibraryQuery,
+  displayNameOf: (skill: ManagedSkill) => string
+): LibraryFilterCounts {
+  const tally = <K>(without: Partial<LibraryQuery>, keysOf: (skill: ManagedSkill) => readonly (K | null)[]) => {
+    const counts = new Map<K, number>();
+    for (const skill of filterLibrarySkills(skills, { ...q, ...without }, displayNameOf)) {
+      for (const key of keysOf(skill)) {
+        if (key !== null) counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+    return counts;
+  };
+  return {
+    sources: tally({ sources: new Set() }, (skill) => [skill.source_type]),
+    tags: tally({ tags: new Set() }, (skill) => (skill.tags.length > 0 ? skill.tags : [q.untaggedSentinel])),
+    agents: tally({ agents: new Set() }, agentKeysOf),
+    creators: tally({ creators: new Set() }, (skill) => [creatorKey(skillCreator(skill))]),
+    updates: tally({ updates: new Set() }, (skill) => [updateFilterOf(skill)]),
+  };
+}
+
 const UPDATE_STATUS_RANK: Record<string, number> = {
   update_available: 0,
   error: 1,
