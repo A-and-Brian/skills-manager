@@ -1224,7 +1224,6 @@
   "remoteHosts": {
     "title": "远程主机",
     "description": "通过你现有的 SSH 配置，管理另一台装有 Skills Manager 的机器上的 Skill。这里只保存地址，认证由 SSH 密钥和 ssh config 完成。",
-    "sidebar": "远程",
     "empty": "还没有远程主机。",
     "add": "添加主机",
     "edit": "编辑",
@@ -1242,32 +1241,7 @@
     },
     "probe": "检测",
     "probeOk": "可连接 · CLI {{version}}",
-    "probeIncompatible": "CLI {{version}} 与本应用（{{appVersion}}）不匹配，请先升级该主机上的 Skills Manager 再部署。",
-    "view": {
-      "notFound": "该远程主机已不存在。",
-      "agents": "该主机上的 Agent",
-      "noAgents": "该主机上没有启用的 Agent。",
-      "skills": "远程库",
-      "noSkills": "远程库为空。",
-      "skillCount": "{{count}} 个 Skill",
-      "deployedTo": "已部署到",
-      "notDeployed": "未部署",
-      "deploy": "部署到 {{agent}}",
-      "undeploy": "从 {{agent}} 移除",
-      "deployed": "已将“{{name}}”部署到 {{host}} 的 {{agent}}。",
-      "undeployed": "已从 {{host}} 的 {{agent}} 移除“{{name}}”。",
-      "update": "更新",
-      "updated": "已在 {{host}} 上更新“{{name}}”。",
-      "upToDate": "“{{name}}”在 {{host}} 上已是最新。",
-      "install": "从库安装",
-      "installTitle": "安装到 {{host}}",
-      "installHint": "主机会自行从 Git 或 skills.sh 来源获取每个 Skill。仅本地的 Skill 无法推送。",
-      "installSelected": "安装 {{count}} 个",
-      "installed": "已在 {{host}} 上安装“{{name}}”。",
-      "installFailed": "安装“{{name}}”失败",
-      "noRemoteSource": "无远程来源",
-      "writesBlocked": "在该主机的 CLI 与应用主版本一致之前，无法部署。"
-    }
+    "probeIncompatible": "该主机上的 Skills Manager 为 {{version}}，本应用为 {{appVersion}}。两边版本必须相同才能连接。"
   },
   "hostSwitcher": {
     "label": "机器",
