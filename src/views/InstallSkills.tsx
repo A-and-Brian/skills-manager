@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useDeferredValue } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import {
   DownloadCloud,
   UploadCloud,
@@ -34,22 +34,13 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { InstallTab } from "./installSearch";
 import { listenOnActiveHost } from "../lib/hostEvents";
 import { pickPath } from "../lib/pickPath";
-import {
-  MARKET_SEARCH_CACHE_TTL_MS,
-  filterMarketSkills,
-  isLoadMoreRequest,
-  marketSearchCacheKey,
-  paginateMarketSkills,
-  pruneMarketSearchCache,
-  type MarketSearchCacheEntry,
-} from "../lib/marketSearch";
+import { filterMarketSkills, paginateMarketSkills } from "../lib/marketSearch";
+import { MARKET_SEARCH_STEP, useMarketSearch } from "../hooks/useMarketSearch";
 import { findInstalledByGitUrl as findInstalledSkillByGitUrl } from "../lib/gitUrl";
 import { StatusBanner } from "../components/StatusBanner";
 import { getErrorMessage, getErrorKind } from "../lib/error";
 
 const MARKET_PAGE_SIZE = 24;
-const MARKET_SEARCH_STEP = 60;
-const MARKET_SEARCH_DEBOUNCE_MS = 450;
 
 export function InstallSkills() {
   const { t } = useTranslation();
@@ -57,16 +48,25 @@ export function InstallSkills() {
   const navigate = useNavigate();
   const { tab: tabParam } = useSearch({ from: "/install" });
   const [activeTab, setActiveTab] = useState<InstallTab>("market");
-  const [marketTab, setMarketTab] = useState<"hot" | "trending" | "alltime">("alltime");
-  const [marketQuery, setMarketQuery] = useState("");
-  const [marketSourceFilter, setMarketSourceFilter] = useState("all");
-  const [marketSkills, setMarketSkills] = useState<SkillsShSkill[]>([]);
-  const [marketPage, setMarketPage] = useState(1);
-  const [marketSearchLimit, setMarketSearchLimit] = useState(MARKET_SEARCH_STEP);
-  const [marketLoading, setMarketLoading] = useState(false);
-  const [marketLoadingMore, setMarketLoadingMore] = useState(false);
-  const [marketError, setMarketError] = useState<string | null>(null);
-  const [marketReloadKey, setMarketReloadKey] = useState(0);
+  const {
+    marketTab,
+    setMarketTab,
+    marketQuery,
+    setMarketQuery,
+    marketSourceFilter,
+    setMarketSourceFilter,
+    marketSkills,
+    marketPage,
+    setMarketPage,
+    marketSearchLimit,
+    setMarketSearchLimit,
+    marketLoading,
+    marketLoadingMore,
+    marketError,
+    setMarketReloadKey,
+    debouncedMarketQuery,
+    sourceOptions,
+  } = useMarketSearch(activeTab === "market");
   const [installing, setInstalling] = useState<string | null>(null);
   const [gitUrl, setGitUrl] = useState("");
   const [gitLoading, setGitLoading] = useState(false);
@@ -94,10 +94,6 @@ export function InstallSkills() {
   const allBtnMeasureRef = useRef<HTMLButtonElement | null>(null);
   const moreBtnMeasureRef = useRef<HTMLButtonElement | null>(null);
   const sourceMeasureRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const marketSearchCacheRef = useRef<Map<string, MarketSearchCacheEntry>>(new Map());
-  const marketSkillsLengthRef = useRef(0);
-  const [debouncedMarketQuery, setDebouncedMarketQuery] = useState("");
-  const deferredMarketQuery = useDeferredValue(marketQuery);
   const resetSourceOverflowState = useCallback(() => {
     setSourceOverflowOpen(false);
     setSourceSearch("");
@@ -133,17 +129,6 @@ export function InstallSkills() {
     (url: string) => findInstalledSkillByGitUrl(managedSkills, url),
     [managedSkills]
   );
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedMarketQuery(deferredMarketQuery);
-    }, MARKET_SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [deferredMarketQuery]);
-
-  useEffect(() => {
-    marketSkillsLengthRef.current = marketSkills.length;
-  }, [marketSkills.length]);
 
   useEffect(() => {
     if (!sourceOverflowOpen) return;
@@ -204,66 +189,6 @@ export function InstallSkills() {
       if (r.status === "rejected") console.warn(`${label} failed:`, r.reason);
     }
   };
-
-  useEffect(() => {
-    if (activeTab !== "market") return;
-
-    const query = debouncedMarketQuery.trim();
-    const loadingMore = isLoadMoreRequest(query, marketSkillsLengthRef.current, marketSearchLimit);
-
-    if (query.length > 0 && !loadingMore) {
-      const cacheKey = marketSearchCacheKey(query, marketSearchLimit);
-      const cached = marketSearchCacheRef.current.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < MARKET_SEARCH_CACHE_TTL_MS) {
-        setMarketSkills(cached.data);
-        setMarketLoading(false);
-        setMarketLoadingMore(false);
-        setMarketPage(1);
-        setMarketError(null);
-        return;
-      }
-    }
-
-    setMarketLoadingMore(loadingMore);
-    setMarketLoading(true);
-    if (!loadingMore) {
-      setMarketPage(1);
-    }
-    setMarketError(null);
-
-    let stale = false;
-    const request = query
-      ? api.searchSkillssh(query, marketSearchLimit)
-      : api.fetchLeaderboard(marketTab);
-
-    request
-      .then((result) => {
-        if (stale) return;
-        setMarketSkills(result);
-        if (query.length > 0 && !loadingMore) {
-          const cacheKey = marketSearchCacheKey(query, marketSearchLimit);
-          marketSearchCacheRef.current.set(cacheKey, { timestamp: Date.now(), data: result });
-          pruneMarketSearchCache(marketSearchCacheRef.current, Date.now());
-        }
-        if (!loadingMore) {
-          setMarketSourceFilter("all");
-        }
-      })
-      .catch((e) => {
-        if (stale) return;
-        console.error(e);
-        const message = e?.toString?.() || t("common.error");
-        setMarketError(message);
-        toast.error(message);
-      })
-      .finally(() => {
-        if (stale) return;
-        setMarketLoading(false);
-        setMarketLoadingMore(false);
-      });
-
-    return () => { stale = true; };
-  }, [activeTab, debouncedMarketQuery, marketReloadKey, marketSearchLimit, marketTab, t]);
 
   useEffect(() => {
     if (activeTab === "local" && !scanResult && !scanLoading) {
@@ -568,10 +493,6 @@ export function InstallSkills() {
 
   const scanGroups = scanResult?.groups ?? [];
   const pendingGroups = scanGroups.filter((group) => !group.imported);
-  const sourceOptions = useMemo(
-    () => Array.from(new Set(marketSkills.map((skill) => skill.source))),
-    [marketSkills]
-  );
 
   // Measure how many source pills can fit in one row; reserve room for All + More.
   const computeVisibleCount = useCallback(() => {
