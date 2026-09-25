@@ -239,7 +239,7 @@ Once changesets land on `main`, the **Version** workflow opens a `chore: version
 
 ## Support
 
-Skills Manager is free and open source. If it saves you time, you can support its development through [GitHub Sponsors](https://github.com/sponsors/A-and-Brian), once a month or as a one-off.
+Skills Manager is free and open source. If it saves you time, you can support this fork through [GitHub Sponsors](https://github.com/sponsors/A-and-Brian), once a month or as a one-off. Support goes to the work done here since the fork: new features, fixes and releases. It doesn't go to the original project. To support the original author, see [xingkongliang/skills-manager](https://github.com/xingkongliang/skills-manager).
 
 ## Credits
 
