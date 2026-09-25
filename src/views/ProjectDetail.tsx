@@ -39,9 +39,18 @@ import { PresetBar } from "../components/PresetBar";
 import { SkillMarkdown } from "../components/SkillMarkdown";
 import { DocumentDiffViewer } from "../components/DocumentDiffViewer";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
-import { matchesTagFilter } from "../lib/tagFilter";
 import { enabledInstalledAgentKeys, getDefaultExportAgents } from "../lib/exportAgents";
-import { groupProjectSkills, type ProjectSkillGroup } from "../lib/projectSkillGroups";
+import {
+  filterProjectSkillGroups,
+  getAgentDotTargets,
+  getAssignedAgents,
+  groupProjectSkills,
+  isCenterUpdatable,
+  isProjectUpdatable,
+  parseLastUsedAgents,
+  pickInitialAgents,
+  type ProjectSkillGroup,
+} from "../lib/projectSkillGroups";
 import { copyCreator, type SkillCreator } from "../lib/skillCreator";
 import { cn } from "../utils";
 import * as api from "../lib/tauri";
@@ -80,22 +89,6 @@ function getSyncStatusMeta(t: (key: string) => string, status: ProjectSkill["syn
         className: "bg-surface-hover text-muted",
       };
   }
-}
-
-function getAssignedAgents(variants: ProjectSkill[]) {
-  return Array.from(new Set(variants.map((variant) => variant.agent))).sort();
-}
-
-function getAgentDotTargets(variants: ProjectSkill[]) {
-  const seen = new Set<string>();
-  const targets: { key: string; display_name: string }[] = [];
-  for (const v of variants) {
-    if (!seen.has(v.agent)) {
-      seen.add(v.agent);
-      targets.push({ key: v.agent, display_name: v.agent_display_name });
-    }
-  }
-  return targets;
 }
 
 export function ProjectDetail() {
@@ -223,18 +216,10 @@ export function ProjectDetail() {
     }
   }, [detailSkill, groupedSkills]);
 
-  const filtered = useMemo(() => {
-    return groupedSkills.filter((skill) => {
-      const matchesSearch =
-        skill.name.toLowerCase().includes(search.toLowerCase()) ||
-        (skill.description || "").toLowerCase().includes(search.toLowerCase());
-      if (!matchesSearch) return false;
-      if (!matchesTagFilter(skill.tags, tagFilters)) return false;
-      if (filterMode === "enabled") return skill.enabledCount > 0;
-      if (filterMode === "disabled") return skill.enabledCount === 0;
-      return true;
-    });
-  }, [groupedSkills, search, filterMode, tagFilters]);
+  const filtered = useMemo(
+    () => filterProjectSkillGroups(groupedSkills, { search, tags: tagFilters, mode: filterMode }),
+    [groupedSkills, search, filterMode, tagFilters]
+  );
 
   const {
     isMultiSelect, setIsMultiSelect,
@@ -336,21 +321,7 @@ export function ProjectDetail() {
     let cancelled = false;
     api.getSettings(projectLastUsedAgentsKey(id))
       .then((raw) => {
-        if (cancelled) return;
-        if (!raw) {
-          setLastUsedExportAgents(null);
-          return;
-        }
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            setLastUsedExportAgents(parsed.filter((x): x is string => typeof x === "string"));
-            return;
-          }
-        } catch {
-          // fall through
-        }
-        setLastUsedExportAgents(null);
+        if (!cancelled) setLastUsedExportAgents(parseLastUsedAgents(raw));
       })
       .catch(() => {
         if (!cancelled) setLastUsedExportAgents(null);
@@ -373,14 +344,15 @@ export function ProjectDetail() {
   // A project that chose its agents always starts from them; the last-used
   // heuristic only stands in for projects that never chose.
   const hasAgentSelection = Boolean(project?.agent_keys);
-  const initialSheetAgents = useMemo(() => {
-    const availableKeys = new Set(enabledInstalledAgentKeys(exportTargets));
-    if (!hasAgentSelection && lastUsedExportAgents && lastUsedExportAgents.length > 0) {
-      const filtered = lastUsedExportAgents.filter((k) => availableKeys.has(k));
-      if (filtered.length > 0) return filtered;
-    }
-    return selectedExportAgents.filter((k) => availableKeys.has(k));
-  }, [exportTargets, hasAgentSelection, lastUsedExportAgents, selectedExportAgents]);
+  const initialSheetAgents = useMemo(
+    () => pickInitialAgents(
+      new Set(enabledInstalledAgentKeys(exportTargets)),
+      selectedExportAgents,
+      lastUsedExportAgents,
+      hasAgentSelection,
+    ),
+    [exportTargets, hasAgentSelection, lastUsedExportAgents, selectedExportAgents]
+  );
 
   const presetBarAgentKeys = useMemo(() => {
     // The real targets load asynchronously; until they arrive `exportTargets`
@@ -440,19 +412,11 @@ export function ProjectDetail() {
   // Counts, not booleans: the buttons must announce how many skills they will
   // actually touch, which is rarely the whole selection.
   const updatableCenterCount = useMemo(
-    () => selectedSkills.filter((skill) => (
-      skill.status === "project_only" ||
-      skill.status === "project_newer" ||
-      skill.status === "diverged"
-    )).length,
+    () => selectedSkills.filter((skill) => isCenterUpdatable(skill.status)).length,
     [selectedSkills]
   );
   const updatableProjectCount = useMemo(
-    () => selectedSkills.filter((skill) => (
-      skill.status === "project_newer" ||
-      skill.status === "center_newer" ||
-      skill.status === "diverged"
-    )).length,
+    () => selectedSkills.filter((skill) => isProjectUpdatable(skill.status)).length,
     [selectedSkills]
   );
   const togglableSelectedCount = useMemo(
@@ -752,10 +716,7 @@ export function ProjectDetail() {
       let failed = 0;
       let conflicting = 0;
       for (const skill of selectedSkills) {
-        const canUpdateCenter =
-          skill.status === "project_only" ||
-          skill.status === "project_newer" ||
-          skill.status === "diverged";
+        const canUpdateCenter = isCenterUpdatable(skill.status);
         if (!canUpdateCenter) continue;
         try {
           const { alignFailed, conflicting: conflictingForSkill } =
@@ -797,10 +758,7 @@ export function ProjectDetail() {
       let updated = 0;
       let failed = 0;
       for (const skill of selectedSkills) {
-        const canUpdateProject =
-          skill.status === "project_newer" ||
-          skill.status === "center_newer" ||
-          skill.status === "diverged";
+        const canUpdateProject = isProjectUpdatable(skill.status);
         if (!canUpdateProject) continue;
         try {
           await forEachCopy(skill, (variant) =>
@@ -1202,14 +1160,8 @@ export function ProjectDetail() {
             const isUpdatingCenter = updatingCenterSkill === skillKey;
             const isUpdatingProject = updatingProjectSkill === skillKey;
             const isToggling = togglingSkill === skillKey;
-            const canUpdateCenter =
-              skill.status === "project_only" ||
-              skill.status === "project_newer" ||
-              skill.status === "diverged";
-            const canUpdateProject =
-              skill.status === "project_newer" ||
-              skill.status === "center_newer" ||
-              skill.status === "diverged";
+            const canUpdateCenter = isCenterUpdatable(skill.status);
+            const canUpdateProject = isProjectUpdatable(skill.status);
             const statusMeta = getSyncStatusMeta(t, skill.status);
             const assignedAgents = getAssignedAgents(skill.variants);
             const creator = creatorOf(skill);
