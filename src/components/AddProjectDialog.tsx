@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 import { cn } from "../utils";
 import * as api from "../lib/tauri";
+import { DeployModePicker } from "./DeployModePicker";
 
 interface Props {
   open: boolean;
@@ -22,6 +23,7 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
   const [scanned, setScanned] = useState(false);
   const [linkedName, setLinkedName] = useState("");
   const [linkedPath, setLinkedPath] = useState("");
+  const [deployMode, setDeployMode] = useState<api.ProjectDeployMode>("link");
 
   useEffect(() => {
     if (!open) return;
@@ -34,6 +36,7 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
     setScanned(false);
     setLinkedName("");
     setLinkedPath("");
+    setDeployMode("link");
   }, [open]);
 
   if (!open) return null;
@@ -43,7 +46,7 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
     if (!dir) return;
     setAdding(true);
     try {
-      await api.addProject(dir as string);
+      await api.addProject(dir as string, deployMode);
       await onAdded();
       onClose();
     } catch {
@@ -84,7 +87,7 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
     try {
       for (const path of selected) {
         try {
-          await api.addProject(path);
+          await api.addProject(path, deployMode);
         } catch {
           // skip duplicates
         }
@@ -157,6 +160,10 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
             </button>
           ))}
         </div>
+
+        {tab !== "linked" && (
+          <DeployModePicker value={deployMode} onChange={setDeployMode} className="mb-4" />
+        )}
 
         {tab === "manual" ? (
           <div className="space-y-3">

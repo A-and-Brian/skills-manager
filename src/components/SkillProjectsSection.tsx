@@ -20,6 +20,8 @@ interface RowData {
   state: RowState;
   installedAgents: string[];
   installedPathByAgent: Record<string, string>;
+  /** Agents whose copy is the vendored copy other agents' links read. */
+  vendoredAgents: string[];
   dirNamesByAgent: Record<string, string[]>;
   targets: ProjectAgentTarget[];
   dirName?: string;
@@ -41,6 +43,7 @@ export function SkillProjectsSection({ skill, projects, onChanged }: Props) {
           state: "loading",
           installedAgents: [],
           installedPathByAgent: {},
+          vendoredAgents: [],
           dirNamesByAgent: {},
           targets: [],
         };
@@ -58,9 +61,11 @@ export function SkillProjectsSection({ skill, projects, onChanged }: Props) {
               api.slugifySkillNames([skill.name]),
             ]);
             const installedPathByAgent: Record<string, string> = {};
+            const vendoredAgents: string[] = [];
             for (const projectSkill of projectSkills) {
               if (projectSkill.center_skill_id === skill.id) {
                 installedPathByAgent[projectSkill.agent] = projectSkill.relative_path;
+                if (projectSkill.vendored) vendoredAgents.push(projectSkill.agent);
               }
             }
             const installedAgents = Object.keys(installedPathByAgent);
@@ -75,6 +80,7 @@ export function SkillProjectsSection({ skill, projects, onChanged }: Props) {
               state: installedAgents.length > 0 ? "installed" : "available",
               installedAgents: Array.from(new Set(installedAgents)),
               installedPathByAgent,
+              vendoredAgents,
               dirNamesByAgent,
               targets,
               dirName: dirNames[0]?.toLowerCase(),
@@ -84,6 +90,7 @@ export function SkillProjectsSection({ skill, projects, onChanged }: Props) {
               state: "error" as const,
               installedAgents: [],
               installedPathByAgent: {},
+              vendoredAgents: [],
               dirNamesByAgent: {},
               targets: [],
               error: getErrorMessage(e, ""),
@@ -156,7 +163,8 @@ export function SkillProjectsSection({ skill, projects, onChanged }: Props) {
   const handleRemove = async (project: Project, target: ProjectAgentTarget) => {
     const row = rows[project.id];
     const relativePath = row?.installedPathByAgent[target.key];
-    if (!row || !relativePath) return;
+    // Only the project view deletes a vendored copy, as the whole skill.
+    if (!row || !relativePath || row.vendoredAgents.includes(target.key)) return;
     const key = `${project.id}:${target.key}`;
     setPendingKey(key);
     try {
@@ -262,18 +270,25 @@ export function SkillProjectsSection({ skill, projects, onChanged }: Props) {
                     ) : activeTargets.map((target) => {
                       const agentState = getAgentState(row, target);
                       const agentPending = pendingKey === `${project.id}:${target.key}`;
+                      // Removing a vendored copy would take the files every
+                      // other agent links to, so it cannot be clicked off here.
+                      const locked = agentState === "installed" && row.vendoredAgents.includes(target.key);
                       const label =
-                        agentState === "installed"
-                          ? t("addFromLibrary.installedShort")
-                          : agentState === "conflict"
-                            ? t("addFromLibrary.status.conflict")
-                            : t("addFromLibrary.add");
-                      const title =
-                        agentState === "conflict"
-                          ? t("addFromLibrary.tooltip.conflict")
+                        locked
+                          ? t("project.vendored.badge")
                           : agentState === "installed"
-                            ? t("addFromLibrary.tooltip.remove")
-                          : target.display_name;
+                            ? t("addFromLibrary.installedShort")
+                            : agentState === "conflict"
+                              ? t("addFromLibrary.status.conflict")
+                              : t("addFromLibrary.add");
+                      const title =
+                        locked
+                          ? t("project.vendored.lockedReason", { agents: target.display_name })
+                          : agentState === "conflict"
+                            ? t("addFromLibrary.tooltip.conflict")
+                            : agentState === "installed"
+                              ? t("addFromLibrary.tooltip.remove")
+                              : target.display_name;
                       return (
                         <button
                           key={target.key}
@@ -286,11 +301,12 @@ export function SkillProjectsSection({ skill, projects, onChanged }: Props) {
                               void handleAdd(project, target);
                             }
                           }}
-                          disabled={(agentState !== "available" && agentState !== "installed") || agentPending}
+                          disabled={locked || (agentState !== "available" && agentState !== "installed") || agentPending}
                           className={cn(
                             "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[12px] font-semibold transition-colors disabled:cursor-default",
                             agentState === "available" && "text-accent-light hover:bg-accent-bg",
-                            agentState === "installed" && "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/15 dark:text-emerald-400",
+                            agentState === "installed" && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                            agentState === "installed" && !locked && "hover:bg-emerald-500/15",
                             agentState === "conflict" && "bg-rose-500/10 text-rose-600 dark:text-rose-400",
                           )}
                         >
