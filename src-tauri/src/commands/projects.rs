@@ -7,7 +7,10 @@ use std::time::Instant;
 use serde::Serialize;
 use tauri::State;
 
-use crate::core::project_deploy::{self, AgentChangePlan, SkillOutcome};
+use crate::core::project_deploy::{
+    self, AgentChangePlan, ConversionOutcome, SkillConversion, SkillOutcome,
+};
+use crate::core::project_scanner::VENDORED_SKILLS_DIR;
 use crate::core::skill_store::{ProjectRecord, SkillRecord, SkillStore};
 use crate::core::timing::should_log_first_or_slow;
 use crate::core::{error::AppError, installer, project_scanner, sync_engine, tool_adapters};
@@ -37,6 +40,8 @@ pub struct ProjectDto {
     /// Agent group keys the project deploys to; `None` means it never chose
     /// and uses every installed and enabled agent.
     pub agent_keys: Option<Vec<String>>,
+    /// `"link"` or `"copy"` (skills vendored into `.agents/skills`).
+    pub deploy_mode: String,
 }
 
 #[derive(Serialize)]
@@ -234,12 +239,57 @@ fn export_agent_keys(
         .into_iter()
         .filter(|key| available.contains(key))
         .collect::<Vec<_>>();
-    if filtered.is_empty() {
+    // A copy-mode project vendors the skill even with no agent to link.
+    if filtered.is_empty() && !is_copy_project(project) {
         return Err(AppError::invalid_input(
             "No enabled installed agents selected for this project",
         ));
     }
     Ok(filtered)
+}
+
+fn is_copy_project(rec: &ProjectRecord) -> bool {
+    rec.deploy_mode == "copy"
+}
+
+/// Load a project for a deploy-mode command. Linked workspaces are one
+/// agent's own folder and have nothing to vendor into.
+fn get_deploy_mode_project(
+    store: &SkillStore,
+    project_id: &str,
+) -> Result<ProjectRecord, AppError> {
+    let record = store
+        .get_project_by_id(project_id)
+        .map_err(AppError::db)?
+        .ok_or_else(|| AppError::not_found("Workspace not found"))?;
+    if record.workspace_type == "linked" {
+        return Err(AppError::invalid_input(
+            "Linked workspaces have no deploy mode",
+        ));
+    }
+    Ok(record)
+}
+
+/// The scanned vendored copy that `skill` stands for: itself, or the one it
+/// reads as a link into `.agents/skills`. `None` for any other copy, which is
+/// handled on its own. Decided from the disk, not the deploy mode: vendored
+/// copies stay vendored after a project switches back to linking.
+fn vendored_variant<'a>(
+    rec: &ProjectRecord,
+    skills: &'a [project_scanner::ProjectSkillInfo],
+    skill: &project_scanner::ProjectSkillInfo,
+) -> Option<&'a project_scanner::ProjectSkillInfo> {
+    if rec.workspace_type == "linked" {
+        return None;
+    }
+    let relative_path = skill.alias_of.as_deref().unwrap_or(&skill.relative_path);
+    let vendored = project_deploy::vendored_copy(Path::new(&rec.path), relative_path)?;
+    if skill.alias_of.is_none() && Path::new(&skill.path) != vendored {
+        return None;
+    }
+    skills
+        .iter()
+        .find(|scanned| Path::new(&scanned.path) == vendored)
 }
 
 /// Load a project for an agent-selection command. Linked workspaces have a
@@ -295,13 +345,29 @@ fn plan_project_agent_change(
     let overrides = store
         .get_project_skill_agent_overrides(&rec.id)
         .map_err(AppError::db)?;
-    Ok(project_deploy::plan_agent_change(
-        &skills,
-        desired,
-        &available_agent_keys(store, rec),
-        &overrides,
-        |skill| library_source(skill, &all_managed),
-    ))
+    let available = available_agent_keys(store, rec);
+    let source_of = |skill: &project_scanner::ProjectSkillInfo| library_source(skill, &all_managed);
+    Ok(if is_copy_project(rec) {
+        project_deploy::plan_copy_agent_change(
+            Path::new(&rec.path),
+            configs,
+            &skills,
+            desired,
+            &available,
+            &overrides,
+            source_of,
+        )
+    } else {
+        project_deploy::plan_agent_change(
+            Path::new(&rec.path),
+            configs,
+            &skills,
+            desired,
+            &available,
+            &overrides,
+            source_of,
+        )
+    })
 }
 
 /// Put one skill on exactly `desired`, the single-skill counterpart of a
@@ -326,13 +392,22 @@ fn reconcile_skill_agents(
     let source = variants
         .iter()
         .find_map(|variant| library_source(variant, &all_managed));
-    let change = project_deploy::plan_skill_change(
-        &variants,
-        desired,
-        &available_agent_keys(store, rec),
-        source,
-        remove_real_dirs,
-    );
+    let available = available_agent_keys(store, rec);
+    // A skill vendored before a switch back to linking stays vendored.
+    let vendored = is_copy_project(rec)
+        || project_deploy::vendored_copy(Path::new(&rec.path), relative_path).is_some();
+    let change = if vendored {
+        project_deploy::plan_copy_skill_change(
+            &configs,
+            &variants,
+            desired,
+            &available,
+            source,
+            remove_real_dirs,
+        )
+    } else {
+        project_deploy::plan_skill_change(&variants, desired, &available, source, remove_real_dirs)
+    };
     let configured_mode = store.get_setting("sync_mode").map_err(AppError::db)?;
     let mut outcomes = project_deploy::apply_agent_change(
         Path::new(&rec.path),
@@ -407,6 +482,7 @@ fn project_to_dto(
         created_at: rec.created_at,
         updated_at: rec.updated_at,
         agent_keys: rec.agent_keys.clone(),
+        deploy_mode: rec.deploy_mode.clone(),
     }
 }
 
@@ -803,6 +879,7 @@ pub async fn get_projects(store: State<'_, Arc<SkillStore>>) -> Result<Vec<Proje
 pub async fn add_project(
     store: State<'_, Arc<SkillStore>>,
     path: String,
+    deploy_mode: Option<String>,
 ) -> Result<ProjectDto, AppError> {
     let store = store.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -810,9 +887,14 @@ pub async fn add_project(
         if !project_path.is_dir() {
             return Err(AppError::invalid_input("Directory does not exist"));
         }
-        let claude_dir = project_path.join(".claude");
-        let skills_dir = claude_dir.join("skills");
-        let disabled_dir = claude_dir.join("skills-disabled");
+        let deploy_mode = deploy_mode.unwrap_or_else(|| "link".to_string());
+        let relative_skills_dir = match deploy_mode.as_str() {
+            "link" => ".claude/skills",
+            "copy" => VENDORED_SKILLS_DIR,
+            _ => return Err(AppError::invalid_input("Deploy mode must be link or copy")),
+        };
+        let skills_dir = project_path.join(relative_skills_dir);
+        let disabled_dir = project_path.join(format!("{relative_skills_dir}-disabled"));
 
         // Support initializing an empty project directory as a managed project.
         std::fs::create_dir_all(&skills_dir)?;
@@ -836,6 +918,7 @@ pub async fn add_project(
             created_at: now,
             updated_at: now,
             agent_keys: None,
+            deploy_mode,
         };
 
         store.insert_project(&record).map_err(AppError::db)?;
@@ -913,6 +996,7 @@ pub async fn add_linked_workspace(
             created_at: now,
             updated_at: now,
             agent_keys: None,
+            deploy_mode: "link".to_string(),
         };
 
         store.insert_project(&record).map_err(AppError::db)?;
@@ -1123,6 +1207,8 @@ pub async fn import_project_skill_to_center(
             .iter()
             .find(|s| s.relative_path == skill_relative_path && s.agent == agent)
             .ok_or_else(|| AppError::not_found("Skill not found in workspace"))?;
+        // A link to a vendored copy imports the vendored copy, and binds to it.
+        let skill = vendored_variant(&record, &skills, skill).unwrap_or(skill);
 
         let source_path = PathBuf::from(&skill.path);
         let all_managed = store.get_all_skills().unwrap_or_default();
@@ -1237,6 +1323,29 @@ pub async fn export_skill_to_project(
         ensure_safe_skill_relative_path(&dir_name)?;
         let agent_keys = export_agent_keys(&store, &project, agents)?;
 
+        if is_copy_project(&project) {
+            let failed = project_deploy::deploy_copy_mode(
+                Path::new(&project.path),
+                &agent_skill_configs(&store),
+                &source,
+                &dir_name,
+                &agent_keys,
+            )
+            .map_err(AppError::io)?;
+            if !failed.is_empty() {
+                let failures: Vec<String> = failed
+                    .iter()
+                    .map(|failure| format!("{}: {}", failure.agent, failure.error))
+                    .collect();
+                return Err(AppError::io(format!(
+                    "\"{}\" was vendored into {VENDORED_SKILLS_DIR}, but links were not created for {}",
+                    skill.name,
+                    failures.join("; ")
+                )));
+            }
+            return Ok(());
+        }
+
         for agent_key in &agent_keys {
             let (skills_root, disabled_root) =
                 resolve_agent_skills_roots(&store, &project, agent_key)
@@ -1305,16 +1414,13 @@ pub async fn update_project_skill_from_center(
             .ok_or_else(|| AppError::not_found("Skill not found in workspace"))?;
 
         let all_managed = store.get_all_skills().unwrap_or_default();
+        // Copy mode updates the vendored copy only; its links follow.
+        if let Some(vendored) = vendored_variant(&record, &skills, skill) {
+            return update_vendored_from_center(vendored, &all_managed);
+        }
         let managed = find_best_center_match(skill, &all_managed)
             .ok_or_else(|| AppError::not_found("No matching skill in center"))?;
-
-        // Mirror the global-workspace protection (agent_workspace.rs): never
-        // overwrite a project copy that has unsynced local edits (#225 review).
-        if classify_sync_status(skill, Some(managed)) == "project_newer" {
-            return Err(AppError::invalid_input(
-                "Project skill is newer than the Skills Center version",
-            ));
-        }
+        ensure_not_project_newer(skill, managed)?;
 
         let (skills_root, disabled_root) = resolve_agent_skills_roots(&store, &record, &agent)
             .ok_or_else(|| AppError::not_found(format!("Unknown agent: {}", agent)))?;
@@ -1334,7 +1440,12 @@ pub async fn update_project_skill_from_center(
 
         let source = PathBuf::from(&managed.central_path);
         let configured_mode = store.get_setting("sync_mode").map_err(AppError::db)?;
-        let mode = sync_engine::sync_mode_for_tool(&agent, configured_mode.as_deref());
+        // A copy-mode project holds files, never links into the library.
+        let mode = if is_copy_project(&record) {
+            sync_engine::SyncMode::Copy
+        } else {
+            sync_engine::sync_mode_for_tool(&agent, configured_mode.as_deref())
+        };
         // UserConfirmed: this intentionally replaces an existing project copy
         // the user chose to update, and project deployments never create
         // `skill_targets` rows, so no record could vouch for it. The
@@ -1349,6 +1460,41 @@ pub async fn update_project_skill_from_center(
         Ok(())
     })
     .await?
+}
+
+/// Mirror the global-workspace protection (agent_workspace.rs): never
+/// overwrite a project copy that has unsynced local edits (#225 review).
+fn ensure_not_project_newer(
+    skill: &project_scanner::ProjectSkillInfo,
+    managed: &SkillRecord,
+) -> Result<(), AppError> {
+    if classify_sync_status(skill, Some(managed)) == "project_newer" {
+        return Err(AppError::invalid_input(
+            "Project skill is newer than the Skills Center version",
+        ));
+    }
+    Ok(())
+}
+
+/// Pull the library version into a vendored copy, replacing it in place so
+/// the agent links to it keep resolving.
+fn update_vendored_from_center(
+    vendored: &project_scanner::ProjectSkillInfo,
+    all_managed: &[SkillRecord],
+) -> Result<(), AppError> {
+    let managed = find_best_center_match(vendored, all_managed)
+        .ok_or_else(|| AppError::not_found("No matching skill in center"))?;
+    ensure_not_project_newer(vendored, managed)?;
+    // UserConfirmed for the same reason as a link-mode update: the user asked
+    // for this copy to be replaced, and the check above guards their edits.
+    sync_engine::sync_skill(
+        Path::new(&managed.central_path),
+        Path::new(&vendored.path),
+        sync_engine::SyncMode::Copy,
+        sync_engine::ReplacePolicy::UserConfirmed,
+    )
+    .map_err(AppError::io)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1367,16 +1513,42 @@ pub async fn toggle_project_skill(
             .get_project_by_id(&project_id)
             .map_err(AppError::db)?
             .ok_or_else(|| AppError::not_found("Workspace not found"))?;
-
-        let (skills_dir, disabled_dir) = resolve_agent_skills_roots(&store, &record, &agent)
-            .ok_or_else(|| AppError::not_found(format!("Unknown agent: {}", agent)))?;
-        let disabled_dir = disabled_dir.ok_or_else(|| {
-            AppError::invalid_input("This workspace does not support disabling skills")
-        })?;
-
-        set_project_skill_enabled_state(&skills_dir, &disabled_dir, &skill_relative_path, enabled)
+        toggle_skill_copy(&store, &record, &skill_relative_path, &agent, enabled)
     })
     .await?
+}
+
+/// Enable or disable one agent's copy of a skill. A vendored copy, or a link
+/// to one, moves together with every link to it, whatever the project's
+/// deploy mode: it only decides how skills are added.
+fn toggle_skill_copy(
+    store: &SkillStore,
+    record: &ProjectRecord,
+    relative_path: &str,
+    agent: &str,
+    enabled: bool,
+) -> Result<(), AppError> {
+    if record.workspace_type != "linked" {
+        let configs = agent_skill_configs(store);
+        let project_root = Path::new(&record.path);
+        if project_deploy::shares_vendored_copy(project_root, &configs, agent, relative_path) {
+            return project_deploy::set_vendored_enabled(
+                project_root,
+                &configs,
+                relative_path,
+                enabled,
+            )
+            .map_err(AppError::io);
+        }
+    }
+
+    let (skills_dir, disabled_dir) = resolve_agent_skills_roots(store, record, agent)
+        .ok_or_else(|| AppError::not_found(format!("Unknown agent: {}", agent)))?;
+    let disabled_dir = disabled_dir.ok_or_else(|| {
+        AppError::invalid_input("This workspace does not support disabling skills")
+    })?;
+
+    set_project_skill_enabled_state(&skills_dir, &disabled_dir, relative_path, enabled)
 }
 
 #[tauri::command]
@@ -1385,6 +1557,7 @@ pub async fn delete_project_skill(
     project_id: String,
     skill_relative_path: String,
     agent: String,
+    whole_skill: Option<bool>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -1394,43 +1567,84 @@ pub async fn delete_project_skill(
             .get_project_by_id(&project_id)
             .map_err(AppError::db)?
             .ok_or_else(|| AppError::not_found("Workspace not found"))?;
-
-        let (skills_root, disabled_root) = resolve_agent_skills_roots(&store, &record, &agent)
-            .ok_or_else(|| AppError::not_found(format!("Unknown agent: {}", agent)))?;
-        let skills_dir = skills_root.join(&skill_relative_path);
-        let disabled_dir = disabled_root
-            .as_ref()
-            .map(|root| root.join(&skill_relative_path));
-
-        let (target, target_root) = if skills_dir.is_dir() {
-            (skills_dir, skills_root)
-        } else if let Some(disabled_dir) = disabled_dir.filter(|path| path.is_dir()) {
-            (
-                disabled_dir,
-                disabled_root.expect("present when disabled_dir exists"),
-            )
-        } else {
-            return Err(AppError::not_found("Skill directory not found"));
-        };
-
-        ensure_dir_within_root(&target, &target_root)?;
-        remove_workspace_skill_target(&target)?;
-
-        // A hand-picked agent set outlives none of the skill's copies.
-        if record.workspace_type != "linked"
-            && !skill_has_any_copy(
-                &agent_skill_configs(&store),
-                Path::new(&record.path),
-                &skill_relative_path,
-            )
-        {
-            store
-                .clear_project_skill_agent_override(&record.id, &skill_relative_path)
-                .map_err(AppError::db)?;
-        }
-        Ok(())
+        delete_skill_copy(
+            &store,
+            &record,
+            &skill_relative_path,
+            &agent,
+            whole_skill.unwrap_or(false),
+        )
     })
     .await?
+}
+
+/// Delete one agent's copy of a skill. A vendored copy goes only as part of
+/// deleting the `whole_skill`, and takes every link to it along; one agent
+/// cannot take away the files the others read, or edits made in the repo.
+fn delete_skill_copy(
+    store: &SkillStore,
+    record: &ProjectRecord,
+    relative_path: &str,
+    agent: &str,
+    whole_skill: bool,
+) -> Result<(), AppError> {
+    if record.workspace_type != "linked" {
+        let configs = agent_skill_configs(store);
+        let project_root = Path::new(&record.path);
+        if project_deploy::is_vendored_agent(&configs, agent)
+            && project_deploy::vendored_copy(project_root, relative_path).is_some()
+        {
+            if !whole_skill {
+                return Err(AppError::invalid_input(format!(
+                    "\"{relative_path}\" is the vendored copy in {VENDORED_SKILLS_DIR} that other \
+                     agents read; delete the whole skill to remove it"
+                )));
+            }
+            project_deploy::delete_vendored(project_root, &configs, relative_path)
+                .map_err(AppError::io)?;
+            return clear_override_without_copies(store, record, relative_path);
+        }
+    }
+
+    let (skills_root, disabled_root) = resolve_agent_skills_roots(store, record, agent)
+        .ok_or_else(|| AppError::not_found(format!("Unknown agent: {}", agent)))?;
+    let skills_dir = skills_root.join(relative_path);
+    let disabled_dir = disabled_root.as_ref().map(|root| root.join(relative_path));
+
+    let (target, target_root) = if skills_dir.is_dir() {
+        (skills_dir, skills_root)
+    } else if let Some(disabled_dir) = disabled_dir.filter(|path| path.is_dir()) {
+        (
+            disabled_dir,
+            disabled_root.expect("present when disabled_dir exists"),
+        )
+    } else {
+        return Err(AppError::not_found("Skill directory not found"));
+    };
+
+    ensure_dir_within_root(&target, &target_root)?;
+    remove_workspace_skill_target(&target)?;
+    clear_override_without_copies(store, record, relative_path)
+}
+
+/// A hand-picked agent set outlives none of the skill's copies.
+fn clear_override_without_copies(
+    store: &SkillStore,
+    record: &ProjectRecord,
+    relative_path: &str,
+) -> Result<(), AppError> {
+    if record.workspace_type != "linked"
+        && !skill_has_any_copy(
+            &agent_skill_configs(store),
+            Path::new(&record.path),
+            relative_path,
+        )
+    {
+        store
+            .clear_project_skill_agent_override(&record.id, relative_path)
+            .map_err(AppError::db)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1570,6 +1784,81 @@ pub async fn clear_project_skill_agents(
     .await?
 }
 
+/// Switch a project back to linking skills from the library. Only affects
+/// skills added from now on: vendored copies stay, being committed files.
+/// Switching to copy mode goes through the convert commands.
+#[tauri::command]
+pub async fn set_project_deploy_mode(
+    store: State<'_, Arc<SkillStore>>,
+    project_id: String,
+    deploy_mode: String,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let record = get_deploy_mode_project(&store, &project_id)?;
+        if deploy_mode != "link" {
+            return Err(AppError::invalid_input(
+                "Convert the project to switch it to copy mode",
+            ));
+        }
+        store
+            .set_project_deploy_mode(&record.id, "link")
+            .map_err(AppError::db)
+    })
+    .await?
+}
+
+fn plan_project_convert(store: &SkillStore, rec: &ProjectRecord) -> Vec<SkillConversion> {
+    let configs = agent_skill_configs(store);
+    let skills = read_workspace_skills(rec, &configs);
+    project_deploy::plan_convert_to_copy(Path::new(&rec.path), &configs, &skills)
+}
+
+#[tauri::command]
+pub async fn preview_project_convert_to_copy(
+    store: State<'_, Arc<SkillStore>>,
+    project_id: String,
+) -> Result<Vec<SkillConversion>, AppError> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let record = get_deploy_mode_project(&store, &project_id)?;
+        Ok(plan_project_convert(&store, &record))
+    })
+    .await?
+}
+
+#[tauri::command]
+pub async fn apply_project_convert_to_copy(
+    store: State<'_, Arc<SkillStore>>,
+    project_id: String,
+) -> Result<Vec<ConversionOutcome>, AppError> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let record = get_deploy_mode_project(&store, &project_id)?;
+        convert_project_to_copy(&store, &record)
+    })
+    .await?
+}
+
+/// Vendor every skill, relink what can be relinked, and switch the project to
+/// copy mode. The mode is saved even when some skills failed: the outcomes
+/// say which, and later adds are vendored either way.
+fn convert_project_to_copy(
+    store: &SkillStore,
+    rec: &ProjectRecord,
+) -> Result<Vec<ConversionOutcome>, AppError> {
+    // Plan again: the disk may have moved on since the preview.
+    let conversions = plan_project_convert(store, rec);
+    let project_root = Path::new(&rec.path);
+    std::fs::create_dir_all(project_root.join(VENDORED_SKILLS_DIR))?;
+    std::fs::create_dir_all(project_root.join(format!("{VENDORED_SKILLS_DIR}-disabled")))?;
+    let outcomes = project_deploy::apply_convert_to_copy(project_root, &conversions);
+    store
+        .set_project_deploy_mode(&rec.id, "copy")
+        .map_err(AppError::db)?;
+    Ok(outcomes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1577,8 +1866,16 @@ mod tests {
         export_agent_keys, find_best_center_match, project_to_dto, reconcile_skill_agents,
         remove_workspace_skill_target, set_project_skill_enabled_state, skill_has_any_copy,
     };
+    #[cfg(unix)]
+    use super::{
+        convert_project_to_copy, delete_skill_copy, plan_project_agent_change,
+        read_workspace_skills, toggle_skill_copy, update_vendored_from_center, vendored_variant,
+        AppError,
+    };
     use crate::core::content_hash;
     use crate::core::error::ErrorKind;
+    #[cfg(unix)]
+    use crate::core::project_deploy::{self, SkipReason};
     use crate::core::project_scanner::{AgentSkillConfig, ProjectSkillInfo};
     use crate::core::skill_store::{ProjectRecord, SkillRecord, SkillStore};
     use std::fs;
@@ -1664,6 +1961,8 @@ mod tests {
             sync_status: "project_only".to_string(),
             center_skill_id: Some("skill-1".to_string()),
             agents_overridden: false,
+            alias_of: None,
+            vendored: false,
             last_modified_at,
             content_hash,
         }
@@ -1692,6 +1991,8 @@ mod tests {
             sync_status: "project_only".to_string(),
             center_skill_id: None,
             agents_overridden: false,
+            alias_of: None,
+            vendored: false,
             last_modified_at: Some(1_000),
             content_hash,
         }
@@ -1815,6 +2116,7 @@ mod tests {
             created_at: 0,
             updated_at: 0,
             agent_keys: None,
+            deploy_mode: "link".to_string(),
         };
         let configs = vec![
             AgentSkillConfig {
@@ -1881,6 +2183,7 @@ mod tests {
             created_at: 0,
             updated_at: 0,
             agent_keys,
+            deploy_mode: "link".to_string(),
         };
         store.insert_project(&record).unwrap();
         (store, record)
@@ -1963,6 +2266,172 @@ mod tests {
         let err =
             reconcile_skill_agents(&store, &record, "x", &keys(&["agent_a"]), false).unwrap_err();
         assert_eq!(err.kind, ErrorKind::NotFound);
+    }
+
+    /// A copy-mode project with no agent to link still vendors.
+    #[test]
+    fn a_copy_project_exports_with_no_agents_selected() {
+        let tmp = tempdir().unwrap();
+        let (store, mut record) = agent_selection_fixture(tmp.path(), Some(Vec::new()));
+        record.deploy_mode = "copy".to_string();
+
+        assert!(export_agent_keys(&store, &record, None).unwrap().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn converting_vendors_the_project_and_later_changes_plan_in_copy_mode() {
+        let tmp = tempdir().unwrap();
+        let (store, record) = agent_selection_fixture(tmp.path(), None);
+
+        let outcomes = convert_project_to_copy(&store, &record).unwrap();
+
+        assert_eq!(outcomes.len(), 1);
+        assert!(outcomes[0].vendored);
+        assert_eq!(outcomes[0].relinked, keys(&["agent_a"]));
+        let record = store.get_project_by_id(&record.id).unwrap().unwrap();
+        assert_eq!(record.deploy_mode, "copy");
+        let project = Path::new(&record.path);
+        assert!(project.join(".agents/skills/x/SKILL.md").is_file());
+        assert!(project.join(".agents/skills-disabled").is_dir());
+        assert_eq!(
+            fs::read_link(project.join(".a/skills/x")).unwrap(),
+            Path::new("../../.agents/skills/x")
+        );
+
+        let configs = agent_skill_configs(&store);
+        let plan =
+            plan_project_agent_change(&store, &record, &configs, &keys(&["agent_b"])).unwrap();
+        assert_eq!(plan.skills[0].adds, keys(&["agent_b"]));
+        assert_eq!(plan.skills[0].removes, keys(&["agent_a"]));
+        assert_eq!(plan.skills[0].skipped.len(), 1);
+        assert_eq!(plan.skills[0].skipped[0].reason, SkipReason::SharedDir);
+    }
+
+    #[cfg(unix)]
+    /// Update `x` the way the command does when asked through agent_a's link.
+    fn update_vendored_x(store: &SkillStore, record: &ProjectRecord) -> Result<(), AppError> {
+        let skills = read_workspace_skills(record, &agent_skill_configs(store));
+        let link = skills
+            .iter()
+            .find(|skill| skill.agent == "agent_a")
+            .unwrap();
+        let vendored = vendored_variant(record, &skills, link).unwrap();
+        assert_ne!(vendored.path, link.path);
+        update_vendored_from_center(vendored, &store.get_all_skills().unwrap())
+    }
+
+    /// Pulling from the library replaces only the vendored copy, and in place,
+    /// so the agent links keep resolving; an edit made in the repo is never
+    /// pulled over.
+    #[cfg(unix)]
+    #[test]
+    fn updating_a_vendored_skill_keeps_its_links_and_refuses_repo_edits() {
+        let tmp = tempdir().unwrap();
+        let (store, record) = agent_selection_fixture(tmp.path(), None);
+        convert_project_to_copy(&store, &record).unwrap();
+        let record = store.get_project_by_id(&record.id).unwrap().unwrap();
+        let project = Path::new(&record.path);
+        let library_md = tmp.path().join("library/x/SKILL.md");
+        let vendored_md = project.join(".agents/skills/x/SKILL.md");
+
+        fs::write(&library_md, "---\nname: x\n---\nnew\n").unwrap();
+        update_vendored_x(&store, &record).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(&vendored_md).unwrap(),
+            "---\nname: x\n---\nnew\n"
+        );
+        assert_eq!(
+            fs::read_to_string(project.join(".a/skills/x/SKILL.md")).unwrap(),
+            "---\nname: x\n---\nnew\n"
+        );
+
+        fs::write(&vendored_md, "edited in the repo").unwrap();
+        let an_hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        fs::File::options()
+            .write(true)
+            .open(&library_md)
+            .unwrap()
+            .set_modified(an_hour_ago)
+            .unwrap();
+        let err = update_vendored_x(&store, &record).unwrap_err();
+
+        assert_eq!(err.kind, ErrorKind::InvalidInput);
+        assert_eq!(
+            fs::read_to_string(&vendored_md).unwrap(),
+            "edited in the repo"
+        );
+    }
+
+    /// `x` converted to copy mode: vendored in `.agents/skills` and linked
+    /// from agent_a. Returns the converted record and the agent group that
+    /// holds the vendored copy.
+    #[cfg(unix)]
+    fn vendored_fixture(tmp: &Path) -> (SkillStore, ProjectRecord, String) {
+        let (store, record) = agent_selection_fixture(tmp, None);
+        convert_project_to_copy(&store, &record).unwrap();
+        let record = store.get_project_by_id(&record.id).unwrap().unwrap();
+        let group = agent_skill_configs(&store)
+            .into_iter()
+            .find(|config| project_deploy::is_vendored_dir(&config.relative_skills_dir))
+            .unwrap()
+            .key;
+        (store, record, group)
+    }
+
+    /// One agent cannot take away the vendored copy the others read, or the
+    /// edits in it; deleting the whole skill can, links and all.
+    #[cfg(unix)]
+    #[test]
+    fn only_deleting_the_whole_skill_removes_its_vendored_copy() {
+        let tmp = tempdir().unwrap();
+        let (store, record, group) = vendored_fixture(tmp.path());
+        let project = Path::new(&record.path);
+
+        let err = delete_skill_copy(&store, &record, "x", &group, false).unwrap_err();
+
+        assert_eq!(err.kind, ErrorKind::InvalidInput);
+        assert!(project.join(".agents/skills/x/SKILL.md").is_file());
+        assert!(project.join(".a/skills/x/SKILL.md").is_file());
+
+        delete_skill_copy(&store, &record, "x", &group, true).unwrap();
+
+        assert!(fs::symlink_metadata(project.join(".agents/skills/x")).is_err());
+        assert!(fs::symlink_metadata(project.join(".a/skills/x")).is_err());
+    }
+
+    /// Switching back to linking only changes how skills are added: a skill
+    /// vendored before still toggles with its links and pulls into its files.
+    #[cfg(unix)]
+    #[test]
+    fn a_project_switched_back_to_linking_keeps_its_vendored_skills_vendored() {
+        let tmp = tempdir().unwrap();
+        let (store, record, _) = vendored_fixture(tmp.path());
+        store.set_project_deploy_mode(&record.id, "link").unwrap();
+        let record = store.get_project_by_id(&record.id).unwrap().unwrap();
+        let project = Path::new(&record.path);
+
+        toggle_skill_copy(&store, &record, "x", "agent_a", false).unwrap();
+
+        assert!(project.join(".agents/skills-disabled/x/SKILL.md").is_file());
+        assert_eq!(
+            fs::read_link(project.join(".a/skills-disabled/x")).unwrap(),
+            Path::new("../../.agents/skills-disabled/x")
+        );
+        toggle_skill_copy(&store, &record, "x", "agent_a", true).unwrap();
+        assert!(project.join(".a/skills/x/SKILL.md").is_file());
+
+        let library_md = tmp.path().join("library/x/SKILL.md");
+        fs::write(&library_md, "---\nname: x\n---\nnew\n").unwrap();
+        update_vendored_x(&store, &record).unwrap();
+
+        let vendored = project.join(".agents/skills/x");
+        assert!(fs::symlink_metadata(&vendored).unwrap().is_dir());
+        assert_eq!(
+            fs::read_to_string(vendored.join("SKILL.md")).unwrap(),
+            "---\nname: x\n---\nnew\n"
+        );
     }
 
     #[test]

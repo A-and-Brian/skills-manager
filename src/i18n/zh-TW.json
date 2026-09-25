@@ -956,6 +956,7 @@
         "overridden": "保留自己的 Agent",
         "not_in_library": "不在技能庫中，無法加入",
         "real_directory": "是實體資料夾而非連結，予以保留",
+        "foreign_link": "是指向內建副本以外位置的連結，予以保留",
         "unavailable_agent": "未安裝或已停用",
         "shared_dir": "共用資料夾，予以保留"
       },

@@ -1040,6 +1040,7 @@
         "overridden": "keeps its own agents",
         "not_in_library": "not in the library, so it can't be added",
         "real_directory": "a real folder, not a link, so it is kept",
+        "foreign_link": "a link to something other than the vendored copy, so it is kept",
         "unavailable_agent": "not installed or turned off",
         "shared_dir": "shared folder, so it is kept"
       },

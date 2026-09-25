@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 
 /// Current schema version. Bump this when adding a new migration.
-const LATEST_VERSION: u32 = 10;
+const LATEST_VERSION: u32 = 11;
 
 /// Run all pending migrations on the database.
 ///
@@ -57,6 +57,7 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
         7 => migrate_v7_to_v8(conn),
         8 => migrate_v8_to_v9(conn),
         9 => migrate_v9_to_v10(conn),
+        10 => migrate_v10_to_v11(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -360,6 +361,18 @@ fn migrate_v9_to_v10(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// v10 → v11: how a project deploys skills. `'link'` (every existing project)
+/// links each agent to the library; `'copy'` vendors the files into the
+/// project's `.agents/skills` and links the other agents there.
+fn migrate_v10_to_v11(conn: &Connection) -> Result<()> {
+    add_column_if_missing(
+        conn,
+        "projects",
+        "deploy_mode",
+        "TEXT NOT NULL DEFAULT 'link'",
+    )
+}
+
 // ── Helpers ──
 
 fn add_column_if_missing(
@@ -647,6 +660,31 @@ mod tests {
             })
             .unwrap();
         assert_eq!(remaining, 0);
+    }
+
+    /// Every project that existed before copy mode keeps linking to the library.
+    #[test]
+    fn deploy_mode_upgrade_defaults_existing_projects_to_link() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE projects DROP COLUMN deploy_mode;
+             INSERT INTO projects (id, name, path) VALUES ('p1', 'P', '/tmp/p');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", LATEST_VERSION - 1)
+            .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let mode: String = conn
+            .query_row(
+                "SELECT deploy_mode FROM projects WHERE id = 'p1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(mode, "link");
     }
 
     #[test]

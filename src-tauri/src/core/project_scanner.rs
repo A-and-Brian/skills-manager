@@ -1,7 +1,12 @@
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
+use super::project_deploy::is_vendored_dir;
 use super::{content_hash, skill_metadata};
+
+/// Where a copy-mode project vendors its skills, the skills.sh convention.
+/// Disabled skills sit in the `-disabled` twin, like every agent folder.
+pub const VENDORED_SKILLS_DIR: &str = ".agents/skills";
 
 /// Lightweight config describing where an agent keeps project-level skills.
 #[derive(Debug, Clone)]
@@ -39,6 +44,14 @@ pub struct ProjectSkillInfo {
     /// The user chose this skill's agents by hand, so bulk agent changes skip it.
     #[serde(default)]
     pub agents_overridden: bool,
+    /// Relative path of the vendored skill this copy links to, when it is a
+    /// link into `.agents/skills` (or its disabled twin).
+    #[serde(default)]
+    pub alias_of: Option<String>,
+    /// This copy is a vendored copy: real files in `.agents/skills` (or its
+    /// disabled twin), which links from other agents may read.
+    #[serde(default)]
+    pub vendored: bool,
     #[serde(skip_serializing)]
     pub last_modified_at: Option<i64>,
     #[serde(skip_serializing)]
@@ -53,6 +66,7 @@ pub fn read_project_skills(
     let mut skills = Vec::new();
 
     for config in agent_configs {
+        let first = skills.len();
         let skills_dir = project_path.join(&config.relative_skills_dir);
         let disabled_dir = project_path.join(format!("{}-disabled", &config.relative_skills_dir));
 
@@ -72,10 +86,44 @@ pub fn read_project_skills(
             &mut skills,
             true,
         );
+        if is_vendored_dir(&config.relative_skills_dir) {
+            for skill in &mut skills[first..] {
+                skill.vendored = !is_link(Path::new(&skill.path));
+            }
+        }
+    }
+
+    let vendored_roots: Vec<PathBuf> = [
+        VENDORED_SKILLS_DIR.to_string(),
+        format!("{VENDORED_SKILLS_DIR}-disabled"),
+    ]
+    .iter()
+    .filter_map(|dir| std::fs::canonicalize(project_path.join(dir)).ok())
+    .collect();
+    for skill in &mut skills {
+        skill.alias_of = vendored_alias(Path::new(&skill.path), &vendored_roots);
     }
 
     skills.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     skills
+}
+
+fn is_link(path: &Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+/// The vendored skill a link resolves to, as a path relative to its root.
+fn vendored_alias(path: &Path, vendored_roots: &[PathBuf]) -> Option<String> {
+    if !is_link(path) {
+        return None;
+    }
+    let resolved = std::fs::canonicalize(path).ok()?;
+    vendored_roots.iter().find_map(|root| {
+        let relative = resolved.strip_prefix(root).ok()?;
+        (!relative.as_os_str().is_empty()).then(|| relative.to_string_lossy().replace('\\', "/"))
+    })
 }
 
 pub fn read_linked_workspace_skills(
@@ -211,6 +259,8 @@ fn read_skills_from_dir_recursive(
                 sync_status: "project_only".to_string(),
                 center_skill_id: None,
                 agents_overridden: false,
+                alias_of: None,
+                vendored: false,
                 last_modified_at,
                 content_hash,
             });
@@ -480,5 +530,64 @@ mod tests {
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "codex-tool");
+    }
+
+    /// A link into `.agents/skills` names the vendored skill it reads; the
+    /// vendored copy itself and links elsewhere name none. Only real files in
+    /// `.agents/skills` are a vendored copy, not a link kept there.
+    #[cfg(unix)]
+    #[test]
+    fn links_into_the_vendored_folder_report_what_they_alias() {
+        use std::os::unix::fs::symlink;
+        use std::path::Path;
+
+        let tmp = tempdir().unwrap();
+        let project = tmp.path();
+        let vendored = project.join(".agents/skills/team/x");
+        fs::create_dir_all(&vendored).unwrap();
+        fs::write(vendored.join("SKILL.md"), "---\nname: x\n---\n").unwrap();
+        let library = project.join("library/y");
+        fs::create_dir_all(&library).unwrap();
+        fs::write(library.join("SKILL.md"), "---\nname: y\n---\n").unwrap();
+        fs::create_dir_all(project.join(".claude/skills")).unwrap();
+        symlink(
+            Path::new("../../.agents/skills/team/x"),
+            project.join(".claude/skills/x"),
+        )
+        .unwrap();
+        symlink(&library, project.join(".claude/skills/y")).unwrap();
+        symlink(&library, project.join(".agents/skills/y")).unwrap();
+
+        let configs = [
+            ("cline", ".agents/skills"),
+            ("claude_code", ".claude/skills"),
+        ]
+        .into_iter()
+        .map(|(key, dir)| AgentSkillConfig {
+            key: key.to_string(),
+            display_name: key.to_string(),
+            relative_skills_dir: dir.to_string(),
+        })
+        .collect::<Vec<_>>();
+        let skills = read_project_skills(project, &configs);
+
+        let alias = |agent: &str, name: &str| {
+            skills
+                .iter()
+                .find(|skill| skill.agent == agent && skill.name == name)
+                .unwrap()
+                .alias_of
+                .clone()
+        };
+        assert_eq!(alias("claude_code", "x"), Some("team/x".to_string()));
+        assert_eq!(alias("cline", "x"), None);
+        assert_eq!(alias("claude_code", "y"), None);
+
+        let vendored: Vec<(&str, &str)> = skills
+            .iter()
+            .filter(|skill| skill.vendored)
+            .map(|skill| (skill.agent.as_str(), skill.name.as_str()))
+            .collect();
+        assert_eq!(vendored, vec![("cline", "x")]);
     }
 }
