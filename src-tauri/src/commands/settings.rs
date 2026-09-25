@@ -383,9 +383,7 @@ pub async fn get_recent_log_excerpt(app: tauri::AppHandle) -> Result<LogExcerpt,
             for &idx in &alerts {
                 let lo = idx.saturating_sub(context);
                 let hi = (idx + context + 1).min(window.len());
-                for k in lo..hi {
-                    keep[k] = true;
-                }
+                keep[lo..hi].fill(true);
             }
             let mut out = String::new();
             let mut last_kept: Option<usize> = None;
@@ -521,7 +519,7 @@ pub async fn export_logs_zip(
                             .map(|t| (e.path(), t))
                     })
                     .collect();
-                all.sort_by(|a, b| b.1.cmp(&a.1));
+                all.sort_by_key(|a| std::cmp::Reverse(a.1));
                 for (path, _) in all.into_iter().take(3) {
                     log_files.push(path);
                 }

@@ -243,6 +243,8 @@ fn planned(obj: &SkillObj, from_theirs: bool) -> PlannedSkill {
     }
 }
 
+// Short-lived, one per merged component, so the unboxed size doesn't matter.
+#[allow(clippy::large_enum_variant)]
 enum ComponentOutcome {
     Merged {
         skill: PlannedSkill,

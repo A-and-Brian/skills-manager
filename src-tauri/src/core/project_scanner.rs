@@ -71,7 +71,7 @@ pub fn read_project_skills(
     for config in agent_configs {
         let first = skills.len();
         let skills_dir = project_path.join(&config.relative_skills_dir);
-        let disabled_dir = project_path.join(format!("{}-disabled", &config.relative_skills_dir));
+        let disabled_dir = project_path.join(format!("{}-disabled", config.relative_skills_dir));
 
         read_skills_from_dir(
             &skills_dir,
@@ -107,7 +107,7 @@ pub fn read_project_skills(
         skill.alias_of = vendored_alias(Path::new(&skill.path), &vendored_roots);
     }
 
-    skills.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    skills.sort_by_key(|a| a.name.to_lowercase());
     skills
 }
 
@@ -155,7 +155,7 @@ pub fn read_linked_workspace_skills(
             recursive,
         );
     }
-    skills.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    skills.sort_by_key(|a| a.name.to_lowercase());
     skills
 }
 
@@ -199,6 +199,7 @@ fn read_skills_from_dir(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn read_skills_from_dir_recursive(
     root: &Path,
     current: &Path,

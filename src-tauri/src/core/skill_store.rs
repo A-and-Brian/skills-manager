@@ -1786,7 +1786,7 @@ mod tag_tests {
         assert_eq!(store.get_all_tags().unwrap(), vec!["keep".to_string()]);
         let map = store.get_tags_map().unwrap();
         assert_eq!(map.get("a").unwrap(), &vec!["keep".to_string()]);
-        assert!(map.get("b").is_none());
+        assert!(!map.contains_key("b"));
     }
 }
 

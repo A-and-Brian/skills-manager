@@ -806,6 +806,81 @@ fn migrate_embedded_credentials_unlocked(
     Ok(Some(sanitized))
 }
 
+pub(crate) fn reconcile_skills_index_unlocked(store: &SkillStore) -> anyhow::Result<()> {
+    sync_metadata::cleanup_temporary_files()?;
+    if sync_metadata::has_complete_skill_snapshot() {
+        sync_metadata::reindex_from_metadata_unlocked(store)?;
+        return Ok(());
+    }
+
+    let skills_dir = central_repo::skills_dir();
+    std::fs::create_dir_all(&skills_dir)?;
+
+    // Remove stale DB records whose central directories no longer exist.
+    let existing = store.get_all_skills()?;
+    for skill in existing {
+        if !std::path::Path::new(&skill.central_path).exists() {
+            store.delete_skill(&skill.id)?;
+        }
+    }
+
+    // Add missing DB records for directories present in central repo.
+    for entry in WalkDir::new(&skills_dir)
+        .min_depth(1)
+        .max_depth(6)
+        .into_iter()
+        .filter_entry(|e| e.file_name().to_string_lossy() != ".git")
+        .flatten()
+    {
+        let path = entry.path().to_path_buf();
+        if !entry.file_type().is_dir() || !skill_metadata::is_valid_skill_dir(&path) {
+            continue;
+        }
+
+        let central_path = path.to_string_lossy().to_string();
+        if store.get_skill_by_central_path(&central_path)?.is_some() {
+            continue;
+        }
+
+        let meta = crate::core::skill_metadata::parse_skill_md(&path);
+        let inferred_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "unknown-skill".to_string());
+        let name = meta
+            .name
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(inferred_name);
+        let now = chrono::Utc::now().timestamp_millis();
+
+        let record = crate::core::skill_store::SkillRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            name,
+            description: meta.description,
+            source_type: "import".to_string(),
+            source_ref: Some(central_path.clone()),
+            source_ref_resolved: None,
+            source_subpath: None,
+            source_branch: None,
+            source_revision: None,
+            remote_revision: None,
+            central_path,
+            content_hash: crate::core::content_hash::hash_directory(&path).ok(),
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+            status: "ok".to_string(),
+            update_status: "local_only".to_string(),
+            last_checked_at: Some(now),
+            last_check_error: None,
+        };
+
+        store.insert_skill(&record)?;
+    }
+
+    sync_metadata::write_all_from_db_unlocked(store)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1086,79 +1161,4 @@ mod tests {
             Some(token_url)
         );
     }
-}
-
-pub(crate) fn reconcile_skills_index_unlocked(store: &SkillStore) -> anyhow::Result<()> {
-    sync_metadata::cleanup_temporary_files()?;
-    if sync_metadata::has_complete_skill_snapshot() {
-        sync_metadata::reindex_from_metadata_unlocked(store)?;
-        return Ok(());
-    }
-
-    let skills_dir = central_repo::skills_dir();
-    std::fs::create_dir_all(&skills_dir)?;
-
-    // Remove stale DB records whose central directories no longer exist.
-    let existing = store.get_all_skills()?;
-    for skill in existing {
-        if !std::path::Path::new(&skill.central_path).exists() {
-            store.delete_skill(&skill.id)?;
-        }
-    }
-
-    // Add missing DB records for directories present in central repo.
-    for entry in WalkDir::new(&skills_dir)
-        .min_depth(1)
-        .max_depth(6)
-        .into_iter()
-        .filter_entry(|e| e.file_name().to_string_lossy() != ".git")
-        .flatten()
-    {
-        let path = entry.path().to_path_buf();
-        if !entry.file_type().is_dir() || !skill_metadata::is_valid_skill_dir(&path) {
-            continue;
-        }
-
-        let central_path = path.to_string_lossy().to_string();
-        if store.get_skill_by_central_path(&central_path)?.is_some() {
-            continue;
-        }
-
-        let meta = crate::core::skill_metadata::parse_skill_md(&path);
-        let inferred_name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown-skill".to_string());
-        let name = meta
-            .name
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or(inferred_name);
-        let now = chrono::Utc::now().timestamp_millis();
-
-        let record = crate::core::skill_store::SkillRecord {
-            id: uuid::Uuid::new_v4().to_string(),
-            name,
-            description: meta.description,
-            source_type: "import".to_string(),
-            source_ref: Some(central_path.clone()),
-            source_ref_resolved: None,
-            source_subpath: None,
-            source_branch: None,
-            source_revision: None,
-            remote_revision: None,
-            central_path,
-            content_hash: crate::core::content_hash::hash_directory(&path).ok(),
-            enabled: true,
-            created_at: now,
-            updated_at: now,
-            status: "ok".to_string(),
-            update_status: "local_only".to_string(),
-            last_checked_at: Some(now),
-            last_check_error: None,
-        };
-
-        store.insert_skill(&record)?;
-    }
-
-    sync_metadata::write_all_from_db_unlocked(store)
 }

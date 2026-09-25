@@ -249,6 +249,7 @@ fn lock_repo_cache(
     let lock_path = cached_dir.with_extension("lock");
     let file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)

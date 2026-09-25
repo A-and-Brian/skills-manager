@@ -130,15 +130,11 @@ pub fn effective_pending(
             (None, Some(TrailerState::Active)) => {
                 pinned.insert(id.clone(), Side::Theirs);
             }
-            (Some(TrailerState::Active), Some(TrailerState::Closed)) => {
-                if declared_a {
-                    pinned.insert(id.clone(), Side::Ours);
-                }
+            (Some(TrailerState::Active), Some(TrailerState::Closed)) if declared_a => {
+                pinned.insert(id.clone(), Side::Ours);
             }
-            (Some(TrailerState::Closed), Some(TrailerState::Active)) => {
-                if declared_b {
-                    pinned.insert(id.clone(), Side::Theirs);
-                }
+            (Some(TrailerState::Closed), Some(TrailerState::Active)) if declared_b => {
+                pinned.insert(id.clone(), Side::Theirs);
             }
             _ => {} // closed or never declared on both sides
         }

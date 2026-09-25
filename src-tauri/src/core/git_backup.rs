@@ -1248,7 +1248,7 @@ pub fn size_report(skills_dir: &Path) -> Result<BackupSizeReport> {
         })
         .collect();
 
-    oversized.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+    oversized.sort_by_key(|a| std::cmp::Reverse(a.bytes));
     Ok(BackupSizeReport {
         total_bytes,
         oversized,

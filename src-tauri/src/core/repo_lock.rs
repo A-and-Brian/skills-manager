@@ -113,6 +113,7 @@ fn open_lock_file() -> Result<File> {
     let lock_path = base.join(LOCK_FILE_NAME);
     OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)

@@ -750,7 +750,7 @@ pub async fn delete_managed_skill(
 
 pub fn delete_managed_skill_core(ctx: &HostCtx, skill_id: String) -> Result<(), AppError> {
     let store = ctx.store.clone();
-    let result = delete_managed_skills_by_ids(&store, &[skill_id.clone()])?;
+    let result = delete_managed_skills_by_ids(&store, std::slice::from_ref(&skill_id))?;
     if result.deleted == 0 {
         return Err(AppError::not_found("Skill not found"));
     }

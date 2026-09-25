@@ -260,7 +260,7 @@ pub fn sync_desired_targets(
         // directory; anything else must be left alone (#363).
         let recorded_mode = existing_targets
             .get(&key)
-            .filter(|existing| PathBuf::from(&existing.target_path) == desired.target)
+            .filter(|existing| Path::new(&existing.target_path) == desired.target)
             .map(|existing| existing.mode.clone());
         if let Some(existing) = existing_targets.get(&key) {
             let target_path = PathBuf::from(&existing.target_path);
@@ -833,9 +833,7 @@ pub fn sync_single_skill_to_tool(
             .get_targets_for_skill(skill_id)
             .unwrap_or_default()
             .into_iter()
-            .find(|existing| {
-                existing.tool == tool && PathBuf::from(&existing.target_path) == target
-            })
+            .find(|existing| existing.tool == tool && Path::new(&existing.target_path) == target)
             .map(|existing| existing.mode),
     };
     let policy = match intent {

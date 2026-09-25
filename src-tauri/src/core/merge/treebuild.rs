@@ -159,7 +159,7 @@ fn build_level(
         }
     }
     let oid = builder.write()?;
-    if repo.find_tree(oid)?.len() == 0 {
+    if repo.find_tree(oid)?.is_empty() {
         return Ok(None);
     }
     Ok(Some(oid))
