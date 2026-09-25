@@ -516,8 +516,10 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
 
   /**
    * "Remove" means two different things here, so the toolbar never merges them:
-   * a managed skill is unsynced (the central copy survives), while a local-only
-   * skill is deleted from disk for good.
+   * a managed skill is unsynced (the central copy survives), while an unmanaged
+   * skill is deleted from disk for good. Sync status does not gate deletion: a
+   * hand-copied folder that happens to match a library skill is still the
+   * agent's own copy, and the library copy is untouched either way.
    */
   const selectedUnsyncable = useMemo(
     () => visibleLocalSkills.filter((skill) =>
@@ -531,7 +533,6 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
     () => visibleLocalSkills.filter((skill) =>
       selectedIds.has(localSkillKey(skill))
       && !(skill.center_skill_id && managedLocalIds.has(skill.center_skill_id))
-      && skill.sync_status === "project_only"
     ),
     [visibleLocalSkills, selectedIds, managedLocalIds]
   );
@@ -726,13 +727,10 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
     const canPull = skill.sync_status === "center_newer" || skill.sync_status === "diverged";
     const isInSync = skill.sync_status === "in_sync";
     const isManaged = !!skill.center_skill_id && managedLocalIds.has(skill.center_skill_id);
-    const canDeleteLocal = !isManaged && skill.sync_status === "project_only";
     const removing = removingLocalSkillId === skill.relative_path;
     const buttonClassName = variant === "grid"
       ? "rounded px-2 py-1 text-[13px] font-medium text-muted transition-colors outline-none hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
       : "rounded p-0.5 text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50";
-
-    if (isInSync && !isManaged) return null;
 
     return (
       <>
@@ -792,7 +790,7 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
               <Trash2 className="h-3.5 w-3.5" />
             )}
           </button>
-        ) : canDeleteLocal ? (
+        ) : (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -808,7 +806,7 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
               <Trash2 className="h-3.5 w-3.5" />
             )}
           </button>
-        ) : null}
+        )}
       </>
     );
   };

@@ -100,6 +100,20 @@ pub struct ProjectRecord {
     pub updated_at: i64,
 }
 
+/// A machine with Skills Manager reachable over SSH. Authentication is the
+/// user's own SSH setup; nothing secret is stored here.
+#[derive(Debug, Clone, Serialize)]
+pub struct RemoteHostRecord {
+    pub id: String,
+    pub name: String,
+    /// `user@host` or an `~/.ssh/config` alias.
+    pub ssh_target: String,
+    /// Explicit CLI path on the remote; `None` resolves it the way the
+    /// `manage-skills` skill does.
+    pub cli_path: Option<String>,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ScenarioSkillToolToggleRecord {
     pub scenario_id: String,
@@ -1220,6 +1234,83 @@ impl SkillStore {
     pub fn delete_project(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ── Remote hosts ──
+
+    pub fn insert_remote_host(&self, host: &RemoteHostRecord) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO remote_hosts (id, name, ssh_target, cli_path, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                host.id,
+                host.name,
+                host.ssh_target,
+                host.cli_path,
+                host.created_at
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_all_remote_hosts(&self) -> Result<Vec<RemoteHostRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, ssh_target, cli_path, created_at
+             FROM remote_hosts
+             ORDER BY created_at",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(RemoteHostRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                ssh_target: row.get(2)?,
+                cli_path: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_remote_host(&self, id: &str) -> Result<Option<RemoteHostRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, ssh_target, cli_path, created_at
+             FROM remote_hosts
+             WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(RemoteHostRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                ssh_target: row.get(2)?,
+                cli_path: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        Ok(rows.next().and_then(|r| r.ok()))
+    }
+
+    pub fn update_remote_host(
+        &self,
+        id: &str,
+        name: &str,
+        ssh_target: &str,
+        cli_path: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE remote_hosts SET name = ?2, ssh_target = ?3, cli_path = ?4 WHERE id = ?1",
+            params![id, name, ssh_target, cli_path],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_remote_host(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM remote_hosts WHERE id = ?1", params![id])?;
         Ok(())
     }
 

@@ -14,6 +14,8 @@ interface Props {
   selected: boolean;
   onToggle: (e: MouseEvent<HTMLDivElement>) => void;
   busy?: boolean;
+  /** Replaces the generic "unavailable" label and tooltip with a specific reason. */
+  unavailableReason?: string;
 }
 
 export function SkillPickerRow({
@@ -24,6 +26,7 @@ export function SkillPickerRow({
   selected,
   onToggle,
   busy,
+  unavailableReason,
 }: Props) {
   const { t } = useTranslation();
   const selectable = status === "available" && !busy;
@@ -32,7 +35,7 @@ export function SkillPickerRow({
     available: "",
     installed: t("addFromLibrary.status.installed"),
     conflict: t("addFromLibrary.status.conflict"),
-    unavailable: t("addFromLibrary.status.unavailable"),
+    unavailable: unavailableReason ?? t("addFromLibrary.status.unavailable"),
   };
 
   const tooltip =
@@ -41,7 +44,7 @@ export function SkillPickerRow({
       : status === "installed"
         ? t("addFromLibrary.tooltip.installed")
         : status === "unavailable"
-          ? t("addFromLibrary.tooltip.unavailable")
+          ? unavailableReason ?? t("addFromLibrary.tooltip.unavailable")
           : undefined;
 
   return (

@@ -14,6 +14,7 @@ import { InstallSkills } from "./views/InstallSkills";
 import { Settings } from "./views/Settings";
 import { ProjectDetail } from "./views/ProjectDetail";
 import { Backup } from "./views/Backup";
+import { RemoteHostView } from "./views/RemoteHost";
 
 function ThemedToaster() {
   const { resolvedTheme } = useThemeContext();
@@ -48,6 +49,7 @@ function App() {
               <Route path="/install" element={<InstallSkills />} />
               <Route path="/backup" element={<Backup />} />
               <Route path="/project/:id" element={<ProjectDetail />} />
+              <Route path="/remote/:hostId" element={<RemoteHostView />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
           </Routes>

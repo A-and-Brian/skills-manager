@@ -404,6 +404,29 @@
       "git": "Git",
       "skillssh": "skills.sh"
     },
+    "groupBy": {
+      "label": "分组",
+      "none": "不分组",
+      "tag": "按标签",
+      "source": "按来源",
+      "agent": "按 Agent"
+    },
+    "sortBy": {
+      "label": "排序",
+      "name": "名称",
+      "updated": "最近更新",
+      "added": "最近添加",
+      "update_status": "更新状态"
+    },
+    "agentFilter": {
+      "notDeployed": "未部署"
+    },
+    "updateFilter": {
+      "update_available": "有更新",
+      "error": "检查失败",
+      "up_to_date": "已是最新",
+      "local": "本地来源"
+    },
     "tags": {
       "filter": "标签",
       "allTags": "全部标签",
@@ -1078,7 +1101,7 @@
       "removeManaged": "从 Agent 移除",
       "deleteLocal": "删除本地 Skill",
       "deleteLocalConfirmTitle": "删除本地 Skill？",
-      "deleteLocalConfirmMessage": "从 {{agent}} 中删除“{{name}}”？此操作会删除本地文件且不可恢复。",
+      "deleteLocalConfirmMessage": "从 {{agent}} 中删除“{{name}}”？此操作会删除本地文件且不可恢复。库中的副本（如有）不受影响。",
       "deletedLocalToast": "已从 {{agent}} 删除“{{name}}”。",
       "uploadedToast": "已将“{{name}}”上传到 Skills 中心，未自动同步回 {{agent}}。",
       "pulledToast": "已从 Skills 中心更新 {{agent}} 中的“{{name}}”。",
@@ -1094,9 +1117,57 @@
         "diverged": "冲突"
       },
       "deleteLocalSelected": "永久删除 {{count}} 个",
-      "deleteLocalBatchConfirm": "永久删除 {{agent}} 里的 {{count}} 个本地 Skill？这些 Skill 只存在于该 Agent 目录，删除后无法恢复。",
+      "deleteLocalBatchConfirm": "永久删除 {{agent}} 里的 {{count}} 个本地 Skill？此操作会删除本地文件且不可恢复。库中的副本（如有）不受影响。",
       "deletedLocalBatch": "已删除 {{count}} 个本地 Skill",
       "deleteLocalBatchFailed": "{{count}} 个本地 Skill 删除失败"
+    }
+  },
+  "remoteHosts": {
+    "title": "远程主机",
+    "description": "通过你现有的 SSH 配置，管理另一台装有 Skills Manager 的机器上的 Skill。这里只保存地址，认证由 SSH 密钥和 ssh config 完成。",
+    "sidebar": "远程",
+    "empty": "还没有远程主机。",
+    "add": "添加主机",
+    "edit": "编辑",
+    "remove": "移除",
+    "removeConfirm": "移除远程主机“{{name}}”？那台机器上的内容不会改变。",
+    "removed": "已移除远程主机",
+    "saved": "已保存远程主机",
+    "form": {
+      "name": "名称",
+      "namePlaceholder": "构建机",
+      "sshTarget": "SSH 目标",
+      "sshTargetPlaceholder": "user@host 或 ssh config 别名",
+      "cliPath": "CLI 路径（可选）",
+      "cliPathPlaceholder": "留空则在远程自动解析"
+    },
+    "probe": "检测",
+    "probeOk": "可连接 · CLI {{version}}",
+    "probeIncompatible": "CLI {{version}} 与本应用（{{appVersion}}）不匹配，请先升级该主机上的 Skills Manager 再部署。",
+    "view": {
+      "notFound": "该远程主机已不存在。",
+      "agents": "该主机上的 Agent",
+      "noAgents": "该主机上没有启用的 Agent。",
+      "skills": "远程库",
+      "noSkills": "远程库为空。",
+      "skillCount": "{{count}} 个 Skill",
+      "deployedTo": "已部署到",
+      "notDeployed": "未部署",
+      "deploy": "部署到 {{agent}}",
+      "undeploy": "从 {{agent}} 移除",
+      "deployed": "已将“{{name}}”部署到 {{host}} 的 {{agent}}。",
+      "undeployed": "已从 {{host}} 的 {{agent}} 移除“{{name}}”。",
+      "update": "更新",
+      "updated": "已在 {{host}} 上更新“{{name}}”。",
+      "upToDate": "“{{name}}”在 {{host}} 上已是最新。",
+      "install": "从库安装",
+      "installTitle": "安装到 {{host}}",
+      "installHint": "主机会自行从 Git 或 skills.sh 来源获取每个 Skill。仅本地的 Skill 无法推送。",
+      "installSelected": "安装 {{count}} 个",
+      "installed": "已在 {{host}} 上安装“{{name}}”。",
+      "installFailed": "安装“{{name}}”失败",
+      "noRemoteSource": "无远程来源",
+      "writesBlocked": "在该主机的 CLI 与应用主版本一致之前，无法部署。"
     }
   }
 }

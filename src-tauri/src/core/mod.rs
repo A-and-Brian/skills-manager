@@ -20,6 +20,7 @@ pub mod migrations;
 pub mod panic_log;
 pub mod path_guard;
 pub mod project_scanner;
+pub mod remote_host;
 pub mod removals;
 pub mod repo_lock;
 pub mod scanner;
