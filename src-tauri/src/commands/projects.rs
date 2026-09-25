@@ -875,6 +875,26 @@ pub async fn get_projects(store: State<'_, Arc<SkillStore>>) -> Result<Vec<Proje
     .await?
 }
 
+/// The mode a new project gets: the caller's choice, else the user's
+/// `default_project_deploy_mode` setting. An unset or unknown stored value
+/// means link, so the setting can never make adding a project fail.
+fn new_project_deploy_mode(
+    store: &SkillStore,
+    requested: Option<String>,
+) -> Result<String, AppError> {
+    if let Some(mode) = requested {
+        return Ok(mode);
+    }
+    let stored = store
+        .get_setting("default_project_deploy_mode")
+        .map_err(AppError::db)?;
+    Ok(match stored.as_deref() {
+        Some("copy") => "copy",
+        _ => "link",
+    }
+    .to_string())
+}
+
 #[tauri::command]
 pub async fn add_project(
     store: State<'_, Arc<SkillStore>>,
@@ -887,7 +907,7 @@ pub async fn add_project(
         if !project_path.is_dir() {
             return Err(AppError::invalid_input("Directory does not exist"));
         }
-        let deploy_mode = deploy_mode.unwrap_or_else(|| "link".to_string());
+        let deploy_mode = new_project_deploy_mode(&store, deploy_mode)?;
         let relative_skills_dir = match deploy_mode.as_str() {
             "link" => ".claude/skills",
             "copy" => VENDORED_SKILLS_DIR,
@@ -1863,8 +1883,9 @@ fn convert_project_to_copy(
 mod tests {
     use super::{
         agent_skill_configs, classify_sync_status, ensure_distinct_linked_workspace_roots,
-        export_agent_keys, find_best_center_match, project_to_dto, reconcile_skill_agents,
-        remove_workspace_skill_target, set_project_skill_enabled_state, skill_has_any_copy,
+        export_agent_keys, find_best_center_match, new_project_deploy_mode, project_to_dto,
+        reconcile_skill_agents, remove_workspace_skill_target, set_project_skill_enabled_state,
+        skill_has_any_copy,
     };
     #[cfg(unix)]
     use super::{
@@ -2191,6 +2212,28 @@ mod tests {
 
     fn keys(items: &[&str]) -> Vec<String> {
         items.iter().map(|item| item.to_string()).collect()
+    }
+
+    #[test]
+    fn a_new_project_follows_the_default_deploy_mode_unless_one_is_named() {
+        let tmp = tempdir().unwrap();
+        let store = SkillStore::new(&tmp.path().join("test.db")).unwrap();
+        let mode = |requested: Option<&str>| {
+            new_project_deploy_mode(&store, requested.map(str::to_string)).unwrap()
+        };
+
+        assert_eq!(mode(None), "link");
+
+        store
+            .set_setting("default_project_deploy_mode", "copy")
+            .unwrap();
+        assert_eq!(mode(None), "copy");
+        assert_eq!(mode(Some("link")), "link");
+
+        store
+            .set_setting("default_project_deploy_mode", "bogus")
+            .unwrap();
+        assert_eq!(mode(None), "link");
     }
 
     #[test]

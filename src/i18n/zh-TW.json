@@ -607,6 +607,8 @@
     "openInFinder": "開啟資料夾",
     "syncMode": "預設同步模式",
     "syncModeDesc": "建議使用符號連結，佔用空間極小且修改可即時生效。全域與專案工作區均生效；注意專案裡的符號連結指向本機中央庫，不會隨倉庫帶走。",
+    "defaultProjectMode": "新專案的預設模式",
+    "defaultProjectModeDesc": "關聯專案時預設使用此模式，每個專案仍可單獨選擇。既有專案維持各自的模式。",
     "symlink": "符號連結",
     "copy": "檔案複製",
     "currentPreset": "當前 Preset",
