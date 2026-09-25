@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -30,6 +30,7 @@ import { GitSetupDialog } from "../components/GitSetupDialog";
 import { LocalBackupNotice } from "../components/LocalBackupNotice";
 import { useApp } from "../context/AppContext";
 import { useBackupStatus } from "../hooks/useBackupStatus";
+import { useGithubDeviceFlow } from "../hooks/useGithubDeviceFlow";
 import { getErrorMessage } from "../lib/error";
 import { displaySnapshotLabel, formatBytes, formatSnapshotWhen } from "../lib/backupFormat";
 import { gitBackupMode, pendingBreakdown } from "../lib/gitBackupMode";
@@ -99,8 +100,7 @@ export function Backup() {
   const [githubRepoName, setGithubRepoName] = useState(DEFAULT_GITHUB_REPO);
   const [githubError, setGithubError] = useState<string | null>(null);
   const [patMode, setPatMode] = useState(false);
-  const [deviceInfo, setDeviceInfo] = useState<api.GithubDeviceFlowStart | null>(null);
-  const deviceCancelRef = useRef(false);
+  const { deviceInfo, runDeviceFlow, cancelDeviceFlow: stopDeviceFlow } = useGithubDeviceFlow();
   const [deviceNameDraft, setDeviceNameDraft] = useState("");
   const [deviceNameEditing, setDeviceNameEditing] = useState(false);
   const [autoBackupSaving, setAutoBackupSaving] = useState(false);
@@ -108,11 +108,6 @@ export function Backup() {
   const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
   const [deleteRemoteConfirmOpen, setDeleteRemoteConfirmOpen] = useState(false);
   const [reconnectMode, setReconnectMode] = useState(false);
-
-  // Abandon an in-flight device-flow poll loop when leaving the page.
-  useEffect(() => () => {
-    deviceCancelRef.current = true;
-  }, []);
 
   const mapGitError = useCallback(
     (error: unknown) => mapGitErrorMessage(error, t),
@@ -449,49 +444,25 @@ export function Backup() {
     }
   };
 
-  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
   const handleDeviceFlow = async () => {
     setLoading("github");
     setGithubError(null);
-    deviceCancelRef.current = false;
     try {
-      const info = await api.githubDeviceFlowStart();
-      setDeviceInfo(info);
-      void openUrl(info.verification_uri);
-
-      const repoName = githubRepoName.trim() || DEFAULT_GITHUB_REPO;
-      let intervalSec = Math.max(info.interval, 5);
-      const deadline = Date.now() + info.expires_in * 1000;
-      while (!deviceCancelRef.current && Date.now() < deadline) {
-        await sleep(intervalSec * 1000);
-        if (deviceCancelRef.current) return;
-        const poll = await api.githubDeviceFlowPoll(info.device_code, repoName);
-        if (poll.status === "slow_down") {
-          intervalSec += 5;
-          continue;
-        }
-        if (poll.status === "connected" && poll.result) {
-          setDeviceInfo(null);
-          await finishGithubConnect(poll.result);
-          return;
-        }
-        // "pending" → keep polling.
-      }
-      if (!deviceCancelRef.current) {
+      const outcome = await runDeviceFlow(githubRepoName.trim() || DEFAULT_GITHUB_REPO);
+      if (outcome === "expired") {
         setGithubError(t("backup.github.deviceExpired"));
+      } else if (outcome) {
+        await finishGithubConnect(outcome);
       }
     } catch (error) {
       setGithubError(mapGithubError(error));
     } finally {
-      setDeviceInfo(null);
       setLoading(null);
     }
   };
 
   const cancelDeviceFlow = () => {
-    deviceCancelRef.current = true;
-    setDeviceInfo(null);
+    stopDeviceFlow();
     setLoading(null);
   };
 
