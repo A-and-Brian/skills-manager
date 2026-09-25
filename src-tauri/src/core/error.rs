@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Structured error type for Tauri commands.
@@ -9,7 +9,7 @@ use std::fmt;
 /// `details` carries machine-readable specifics for the few kinds where the
 /// caller has to do more than print the message. It is omitted from the wire
 /// format when absent, so every existing consumer is unaffected.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppError {
     pub kind: ErrorKind,
     pub message: String,
@@ -22,18 +22,18 @@ pub struct AppError {
 /// `ErrorKind::TargetConflict`, which is what says how to read them — the ways
 /// out are documented once, in the `manage-skills` skill, not repeated here on
 /// every error.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorDetails {
     pub conflicts: Vec<TargetConflictDetail>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetConflictDetail {
     pub path: String,
     pub reason: String,
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
     Database,
@@ -281,6 +281,32 @@ mod tests {
         let err = AppError::invalid_input("bad");
         let json = serde_json::to_value(&err).unwrap();
         assert_eq!(json["kind"], "invalid_input");
+    }
+
+    /// A remote host sends its errors over the wire; they must arrive as the
+    /// same error, paths included.
+    #[test]
+    fn round_trips_through_json() {
+        let sent = AppError::target_conflict(
+            "Refusing to deploy",
+            vec![TargetConflictDetail {
+                path: "/home/me/.claude/skills/db".into(),
+                reason: "is not a managed deployment".into(),
+            }],
+        );
+        let received: AppError =
+            serde_json::from_str(&serde_json::to_string(&sent).unwrap()).unwrap();
+        assert_eq!(received.kind, ErrorKind::TargetConflict);
+        assert_eq!(received.message, "Refusing to deploy");
+        assert_eq!(
+            received.details.unwrap().conflicts[0].path,
+            "/home/me/.claude/skills/db"
+        );
+
+        let plain: AppError =
+            serde_json::from_str(r#"{"kind":"not_found","message":"gone"}"#).unwrap();
+        assert_eq!(plain.kind, ErrorKind::NotFound);
+        assert!(plain.details.is_none());
     }
 
     #[test]

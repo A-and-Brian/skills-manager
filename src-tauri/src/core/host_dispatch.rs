@@ -563,9 +563,12 @@ mod tests {
     /// import-all would copy this machine's agent skills). The mistyped
     /// `path` stops path-taking commands before they touch the disk —
     /// `set_central_repo_path` would otherwise rewrite this user's config.
+    /// The two scan commands are left out: they read the agent folders under
+    /// this machine's real home.
     #[test]
     fn every_listed_command_is_dispatched() {
-        for command in COMMANDS {
+        let reads_real_home = ["scan_local_skills", "import_all_discovered"];
+        for command in COMMANDS.iter().filter(|c| !reads_real_home.contains(c)) {
             let host = test_host();
             if let Err(err) = dispatch(&host.ctx, command, &json!({ "path": 0 })) {
                 assert!(

@@ -1032,3 +1032,21 @@ export const remoteHostInstall = (hostId: string, source: string, sourceType: st
 
 export const remoteHostUpdateSkill = (hostId: string, skillRef: string) =>
   invoke<unknown>("remote_host_update_skill", { hostId, skillRef });
+
+// ── Remote session (one live `serve --stdio` connection) ──
+
+/** Who answered on the connected host. */
+export interface HostSessionInfo {
+  host_id: string;
+  version: string;
+  os: string;
+  arch: string;
+  home: string;
+  base_dir: string;
+}
+
+/** Rejects when the host is unreachable, has no CLI, or runs another version. */
+export const remoteHostConnect = (hostId: string) =>
+  invoke<HostSessionInfo>("remote_host_connect", { hostId });
+
+export const remoteHostDisconnect = () => invoke<void>("remote_host_disconnect");

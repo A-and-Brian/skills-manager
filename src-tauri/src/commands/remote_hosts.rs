@@ -9,6 +9,7 @@ use tauri::State;
 
 use crate::core::error::AppError;
 use crate::core::remote_host;
+use crate::core::remote_session::{HostSessionInfo, RemoteSessions};
 use crate::core::skill_store::{RemoteHostRecord, SkillStore};
 
 #[derive(Serialize)]
@@ -214,4 +215,37 @@ pub async fn remote_host_update_skill(
         remote_host::run_write(host, &["skills", "update", &skill_ref])
     })
     .await
+}
+
+// ── Live session (`serve --stdio`) ──
+
+/// Connect to the host (or reuse the live session) and say who answered.
+#[tauri::command]
+pub async fn remote_host_connect(
+    host_id: String,
+    sessions: State<'_, RemoteSessions>,
+) -> Result<HostSessionInfo, AppError> {
+    Ok(sessions.session_for(&host_id).await?.info().clone())
+}
+
+#[tauri::command]
+pub async fn remote_host_disconnect(sessions: State<'_, RemoteSessions>) -> Result<(), AppError> {
+    sessions.disconnect().await;
+    Ok(())
+}
+
+/// Run one host-scoped command on the host, connecting first if its session
+/// is not live. `args` is the object the command takes locally.
+#[tauri::command]
+pub async fn remote_invoke(
+    host_id: String,
+    command: String,
+    args: Value,
+    sessions: State<'_, RemoteSessions>,
+) -> Result<Value, AppError> {
+    sessions
+        .session_for(&host_id)
+        .await?
+        .call(&command, args)
+        .await
 }

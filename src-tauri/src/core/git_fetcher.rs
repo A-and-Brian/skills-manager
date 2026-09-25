@@ -24,8 +24,10 @@ pub type ProgressCallback = Box<dyn Fn(&str) + Send>;
 
 /// Create a `Command` for git that hides the console window on Windows.
 fn git_command() -> Command {
-    #[allow(unused_mut)]
     let mut cmd = Command::new("git");
+    // Under `serve --stdio` our stdin is the request stream; git (or a
+    // credential helper it runs) must never read from it.
+    cmd.stdin(Stdio::null());
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
