@@ -792,6 +792,7 @@ mod tests {
             in_center: false,
             sync_status: "project_only".to_string(),
             center_skill_id: None,
+            agents_overridden: false,
             last_modified_at: None,
             content_hash: Some("same-hash".to_string()),
         };

@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 
 /// Current schema version. Bump this when adding a new migration.
-const LATEST_VERSION: u32 = 9;
+const LATEST_VERSION: u32 = 10;
 
 /// Run all pending migrations on the database.
 ///
@@ -56,6 +56,7 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
         6 => migrate_v6_to_v7(conn),
         7 => migrate_v7_to_v8(conn),
         8 => migrate_v8_to_v9(conn),
+        9 => migrate_v9_to_v10(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -339,6 +340,26 @@ fn migrate_v8_to_v9(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// v9 → v10: per-project agent selection. `projects.agent_keys` is a JSON
+/// array of agent group keys; NULL keeps the legacy "every installed and
+/// enabled agent" behaviour. `project_skill_agents` records the skills whose
+/// agents the user chose by hand, which bulk agent changes leave alone.
+fn migrate_v9_to_v10(conn: &Connection) -> Result<()> {
+    add_column_if_missing(conn, "projects", "agent_keys", "TEXT")?;
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS project_skill_agents (
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            relative_path TEXT NOT NULL,
+            agent_keys TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (project_id, relative_path)
+        );
+        ",
+    )?;
+    Ok(())
+}
+
 // ── Helpers ──
 
 fn add_column_if_missing(
@@ -408,6 +429,7 @@ mod tests {
         assert!(tables.contains(&"scenario_skill_tools".to_string()));
         assert!(tables.contains(&"audit_log".to_string()));
         assert!(tables.contains(&"remote_hosts".to_string()));
+        assert!(tables.contains(&"project_skill_agents".to_string()));
     }
 
     #[test]
@@ -585,6 +607,46 @@ mod tests {
             |r| r.get(0),
         )
         .unwrap()
+    }
+
+    /// An existing project keeps NULL agent keys (legacy behaviour), and its
+    /// per-skill overrides go with it when the project is removed.
+    #[test]
+    fn project_agent_selection_upgrade_keeps_legacy_projects_and_cascades() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        run_migrations(&conn).unwrap();
+        // Rewind to the step before this one with a project already saved.
+        conn.execute_batch(
+            "DROP TABLE project_skill_agents;
+             ALTER TABLE projects DROP COLUMN agent_keys;
+             INSERT INTO projects (id, name, path) VALUES ('p1', 'P', '/tmp/p');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 9).unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let agent_keys: Option<String> = conn
+            .query_row("SELECT agent_keys FROM projects WHERE id = 'p1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(agent_keys, None);
+        conn.execute(
+            "INSERT INTO project_skill_agents (project_id, relative_path, agent_keys, updated_at)
+             VALUES ('p1', 'x', '[\"cursor\"]', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute("DELETE FROM projects WHERE id = 'p1'", [])
+            .unwrap();
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM project_skill_agents", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(remaining, 0);
     }
 
     #[test]

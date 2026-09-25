@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -7,6 +7,7 @@ use std::time::Instant;
 use serde::Serialize;
 use tauri::State;
 
+use crate::core::project_deploy::{self, AgentChangePlan, SkillOutcome};
 use crate::core::skill_store::{ProjectRecord, SkillRecord, SkillStore};
 use crate::core::timing::should_log_first_or_slow;
 use crate::core::{error::AppError, installer, project_scanner, sync_engine, tool_adapters};
@@ -33,6 +34,9 @@ pub struct ProjectDto {
     pub sync_health: SyncHealthDto,
     pub created_at: i64,
     pub updated_at: i64,
+    /// Agent group keys the project deploys to; `None` means it never chose
+    /// and uses every installed and enabled agent.
+    pub agent_keys: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -49,6 +53,10 @@ pub struct ProjectAgentTargetDto {
     pub enabled: bool,
     pub installed: bool,
     pub is_custom: bool,
+    /// Part of the project's agent selection.
+    pub selected: bool,
+    /// Project-relative skills folder, shared by every agent in the group.
+    pub relative_skills_dir: String,
 }
 
 fn agent_skill_configs(store: &SkillStore) -> Vec<project_scanner::AgentSkillConfig> {
@@ -151,6 +159,8 @@ fn project_agent_targets_for_record(
             enabled: true,
             installed: true,
             is_custom: false,
+            selected: true,
+            relative_skills_dir: rec.path.clone(),
         }];
     }
 
@@ -167,15 +177,187 @@ fn project_agent_targets_for_record(
         .into_iter()
         .map(|config| {
             let adapter = tool_adapters::find_adapter_with_store(store, &config.key);
+            let enabled = !disabled_tools.contains(&config.key);
+            let installed = adapter.as_ref().map(|a| a.is_installed()).unwrap_or(false);
+            // A project that never chose uses every agent it can deploy to.
+            let selected = match &rec.agent_keys {
+                Some(keys) => keys.contains(&config.key),
+                None => installed && enabled,
+            };
             ProjectAgentTargetDto {
-                enabled: !disabled_tools.contains(&config.key),
-                installed: adapter.as_ref().map(|a| a.is_installed()).unwrap_or(false),
+                enabled,
+                installed,
                 is_custom: adapter.as_ref().map(|a| a.is_custom).unwrap_or(false),
+                selected,
                 key: config.key,
                 display_name: config.display_name,
+                relative_skills_dir: config.relative_skills_dir,
             }
         })
         .collect()
+}
+
+/// Agents that are installed and enabled, the only ones a deployment can reach.
+fn available_agent_keys(store: &SkillStore, rec: &ProjectRecord) -> HashSet<String> {
+    project_agent_targets_for_record(store, rec)
+        .into_iter()
+        .filter(|target| target.installed && target.enabled)
+        .map(|target| target.key)
+        .collect()
+}
+
+/// Agents a project deploys to when none are named: its selection, limited
+/// to agents that are installed and enabled.
+fn effective_project_agent_keys(store: &SkillStore, rec: &ProjectRecord) -> Vec<String> {
+    project_agent_targets_for_record(store, rec)
+        .into_iter()
+        .filter(|target| target.selected && target.installed && target.enabled)
+        .map(|target| target.key)
+        .collect()
+}
+
+/// The agents an export writes to: the requested ones, or the project's own
+/// selection when none are requested, limited to agents it can reach.
+fn export_agent_keys(
+    store: &SkillStore,
+    project: &ProjectRecord,
+    requested: Option<Vec<String>>,
+) -> Result<Vec<String>, AppError> {
+    let requested = requested
+        .filter(|items| !items.is_empty())
+        .unwrap_or_else(|| effective_project_agent_keys(store, project));
+    if project.workspace_type == "linked" {
+        return Ok(requested);
+    }
+    let available = available_agent_keys(store, project);
+    let filtered = requested
+        .into_iter()
+        .filter(|key| available.contains(key))
+        .collect::<Vec<_>>();
+    if filtered.is_empty() {
+        return Err(AppError::invalid_input(
+            "No enabled installed agents selected for this project",
+        ));
+    }
+    Ok(filtered)
+}
+
+/// Load a project for an agent-selection command. Linked workspaces have a
+/// single agent, so there is nothing to select.
+fn get_agent_selectable_project(
+    store: &SkillStore,
+    project_id: &str,
+) -> Result<ProjectRecord, AppError> {
+    let record = store
+        .get_project_by_id(project_id)
+        .map_err(AppError::db)?
+        .ok_or_else(|| AppError::not_found("Workspace not found"))?;
+    if record.workspace_type == "linked" {
+        return Err(AppError::invalid_input(
+            "Linked workspaces have a single agent and no agent selection",
+        ));
+    }
+    Ok(record)
+}
+
+/// Check requested agents are project agent groups, dropping duplicates.
+fn validated_agent_keys(
+    configs: &[project_scanner::AgentSkillConfig],
+    agent_keys: Vec<String>,
+) -> Result<Vec<String>, AppError> {
+    let mut keys: Vec<String> = Vec::new();
+    for key in agent_keys {
+        if !configs.iter().any(|config| config.key == key) {
+            return Err(AppError::invalid_input(format!("Unknown agent: {key}")));
+        }
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    Ok(keys)
+}
+
+fn library_source(
+    skill: &project_scanner::ProjectSkillInfo,
+    all_managed: &[SkillRecord],
+) -> Option<PathBuf> {
+    find_best_center_match(skill, all_managed).map(|managed| PathBuf::from(&managed.central_path))
+}
+
+fn plan_project_agent_change(
+    store: &SkillStore,
+    rec: &ProjectRecord,
+    configs: &[project_scanner::AgentSkillConfig],
+    desired: &[String],
+) -> Result<AgentChangePlan, AppError> {
+    let skills = read_workspace_skills(rec, configs);
+    let all_managed = store.get_all_skills().map_err(AppError::db)?;
+    let overrides = store
+        .get_project_skill_agent_overrides(&rec.id)
+        .map_err(AppError::db)?;
+    Ok(project_deploy::plan_agent_change(
+        &skills,
+        desired,
+        &available_agent_keys(store, rec),
+        &overrides,
+        |skill| library_source(skill, &all_managed),
+    ))
+}
+
+/// Put one skill on exactly `desired`, the single-skill counterpart of a
+/// bulk agent change.
+fn reconcile_skill_agents(
+    store: &SkillStore,
+    rec: &ProjectRecord,
+    relative_path: &str,
+    desired: &[String],
+    remove_real_dirs: bool,
+) -> Result<SkillOutcome, AppError> {
+    let configs = agent_skill_configs(store);
+    let skills = read_workspace_skills(rec, &configs);
+    let variants: Vec<&project_scanner::ProjectSkillInfo> = skills
+        .iter()
+        .filter(|skill| skill.relative_path.eq_ignore_ascii_case(relative_path))
+        .collect();
+    if variants.is_empty() {
+        return Err(AppError::not_found("Skill not found in workspace"));
+    }
+    let all_managed = store.get_all_skills().map_err(AppError::db)?;
+    let source = variants
+        .iter()
+        .find_map(|variant| library_source(variant, &all_managed));
+    let change = project_deploy::plan_skill_change(
+        &variants,
+        desired,
+        &available_agent_keys(store, rec),
+        source,
+        remove_real_dirs,
+    );
+    let configured_mode = store.get_setting("sync_mode").map_err(AppError::db)?;
+    let mut outcomes = project_deploy::apply_agent_change(
+        Path::new(&rec.path),
+        &configs,
+        &[change],
+        configured_mode.as_deref(),
+        remove_real_dirs,
+    );
+    Ok(outcomes.remove(0))
+}
+
+/// Whether any agent still holds a copy of the skill, enabled or disabled.
+fn skill_has_any_copy(
+    configs: &[project_scanner::AgentSkillConfig],
+    project_root: &Path,
+    relative_path: &str,
+) -> bool {
+    configs.iter().any(|config| {
+        [
+            project_root.join(&config.relative_skills_dir),
+            project_root.join(format!("{}-disabled", config.relative_skills_dir)),
+        ]
+        .iter()
+        .any(|root| std::fs::symlink_metadata(root.join(relative_path)).is_ok())
+    })
 }
 
 /// Convert a project record into its DTO, folding the copies of one logical
@@ -224,6 +406,7 @@ fn project_to_dto(
         sync_health: health,
         created_at: rec.created_at,
         updated_at: rec.updated_at,
+        agent_keys: rec.agent_keys.clone(),
     }
 }
 
@@ -652,6 +835,7 @@ pub async fn add_project(
             sort_order: 0,
             created_at: now,
             updated_at: now,
+            agent_keys: None,
         };
 
         store.insert_project(&record).map_err(AppError::db)?;
@@ -728,6 +912,7 @@ pub async fn add_linked_workspace(
             sort_order: 0,
             created_at: now,
             updated_at: now,
+            agent_keys: None,
         };
 
         store.insert_project(&record).map_err(AppError::db)?;
@@ -807,7 +992,14 @@ pub async fn get_project_skills(
 
         let all_managed = store.get_all_skills().unwrap_or_default();
         let tags_map = store.get_tags_map().unwrap_or_default();
+        let overridden: HashSet<String> = store
+            .get_project_skill_agent_overrides(&record.id)
+            .unwrap_or_default()
+            .into_keys()
+            .map(|path| path.to_lowercase())
+            .collect();
         for skill in &mut skills {
+            skill.agents_overridden = overridden.contains(&skill.relative_path.to_lowercase());
             let matched = find_best_center_match(skill, &all_managed);
             skill.in_center = matched.is_some();
             skill.center_skill_id = matched.map(|m| m.id.clone());
@@ -1043,33 +1235,7 @@ pub async fn export_skill_to_project(
         let source = PathBuf::from(&skill.central_path);
         let dir_name = sync_engine::target_dir_name(&source, &skill.name);
         ensure_safe_skill_relative_path(&dir_name)?;
-        let requested_agent_keys = agents.filter(|items| !items.is_empty()).unwrap_or_else(|| {
-            if project.workspace_type == "linked" {
-                vec![linked_workspace_agent_key(&project)]
-            } else {
-                vec!["claude_code".to_string()]
-            }
-        });
-        let agent_keys = if project.workspace_type == "linked" {
-            requested_agent_keys
-        } else {
-            let available_targets: std::collections::HashSet<String> =
-                project_agent_targets_for_record(&store, &project)
-                    .into_iter()
-                    .filter(|target| target.installed && target.enabled)
-                    .map(|target| target.key)
-                    .collect();
-            let filtered = requested_agent_keys
-                .into_iter()
-                .filter(|key| available_targets.contains(key))
-                .collect::<Vec<_>>();
-            if filtered.is_empty() {
-                return Err(AppError::invalid_input(
-                    "No enabled installed agents selected for this project",
-                ));
-            }
-            filtered
-        };
+        let agent_keys = export_agent_keys(&store, &project, agents)?;
 
         for agent_key in &agent_keys {
             let (skills_root, disabled_root) =
@@ -1098,26 +1264,16 @@ pub async fn export_skill_to_project(
         // Two agents can resolve to the same project skills root, in which case
         // the second pass would find the directory the first just wrote and
         // refuse it. The artifact is already correct, so skip instead.
-        let mut written: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        let mut written: HashSet<PathBuf> = HashSet::new();
         for agent_key in &agent_keys {
             let (skills_root, _) = resolve_agent_skills_roots(&store, &project, agent_key)
                 .ok_or_else(|| AppError::not_found(format!("Unknown agent: {}", agent_key)))?;
-            let target_dir = skills_root.join(&dir_name);
-            if !written.insert(target_dir.clone()) {
+            if !written.insert(skills_root.join(&dir_name)) {
                 continue;
             }
-            std::fs::create_dir_all(&skills_root)?;
             let mode = sync_engine::sync_mode_for_tool(agent_key, configured_mode.as_deref());
-            // NoClobber: the loop above already refused every pre-existing
-            // target, so nothing here should need replacing. Belt and braces —
-            // `exists()` misses dangling links and is racy against this write.
-            sync_engine::sync_skill(
-                &source,
-                &target_dir,
-                mode,
-                sync_engine::ReplacePolicy::NoClobber,
-            )
-            .map_err(AppError::io)?;
+            project_deploy::deploy_skill(&source, &skills_root, &dir_name, mode)
+                .map_err(AppError::io)?;
         }
 
         Ok(())
@@ -1259,7 +1415,157 @@ pub async fn delete_project_skill(
 
         ensure_dir_within_root(&target, &target_root)?;
         remove_workspace_skill_target(&target)?;
+
+        // A hand-picked agent set outlives none of the skill's copies.
+        if record.workspace_type != "linked"
+            && !skill_has_any_copy(
+                &agent_skill_configs(&store),
+                Path::new(&record.path),
+                &skill_relative_path,
+            )
+        {
+            store
+                .clear_project_skill_agent_override(&record.id, &skill_relative_path)
+                .map_err(AppError::db)?;
+        }
         Ok(())
+    })
+    .await?
+}
+
+#[tauri::command]
+pub async fn set_project_agent_keys(
+    store: State<'_, Arc<SkillStore>>,
+    project_id: String,
+    agent_keys: Option<Vec<String>>,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let record = get_agent_selectable_project(&store, &project_id)?;
+        let agent_keys = agent_keys
+            .map(|keys| validated_agent_keys(&agent_skill_configs(&store), keys))
+            .transpose()?;
+        store
+            .set_project_agent_keys(&record.id, agent_keys.as_deref())
+            .map_err(AppError::db)
+    })
+    .await?
+}
+
+#[tauri::command]
+pub async fn preview_project_agent_change(
+    store: State<'_, Arc<SkillStore>>,
+    project_id: String,
+    agent_keys: Vec<String>,
+) -> Result<AgentChangePlan, AppError> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let record = get_agent_selectable_project(&store, &project_id)?;
+        let configs = agent_skill_configs(&store);
+        let desired = validated_agent_keys(&configs, agent_keys)?;
+        plan_project_agent_change(&store, &record, &configs, &desired)
+    })
+    .await?
+}
+
+#[tauri::command]
+pub async fn apply_project_agent_change(
+    store: State<'_, Arc<SkillStore>>,
+    project_id: String,
+    agent_keys: Vec<String>,
+) -> Result<Vec<SkillOutcome>, AppError> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let record = get_agent_selectable_project(&store, &project_id)?;
+        let configs = agent_skill_configs(&store);
+        let desired = validated_agent_keys(&configs, agent_keys)?;
+        // Plan again: the disk may have moved on since the preview.
+        let plan = plan_project_agent_change(&store, &record, &configs, &desired)?;
+        let configured_mode = store.get_setting("sync_mode").map_err(AppError::db)?;
+        let outcomes = project_deploy::apply_agent_change(
+            Path::new(&record.path),
+            &configs,
+            &plan.skills,
+            configured_mode.as_deref(),
+            false,
+        );
+        // Saved even when some agents failed: it is still what the user
+        // chose, and the outcomes say what did not happen.
+        store
+            .set_project_agent_keys(&record.id, Some(&desired))
+            .map_err(AppError::db)?;
+        Ok(outcomes)
+    })
+    .await?
+}
+
+/// Put one skill on `desired` by hand and record the agents it is on after:
+/// an agent that failed or was kept is recorded as it ended up, not as asked,
+/// and the outcome says what did not happen.
+fn choose_skill_agents(
+    store: &SkillStore,
+    record: &ProjectRecord,
+    relative_path: &str,
+    desired: &[String],
+) -> Result<SkillOutcome, AppError> {
+    // Unticking an agent on one skill deletes that copy, real directory
+    // or not, exactly as the per-agent toggle always has.
+    let outcome = reconcile_skill_agents(store, record, relative_path, desired, true)?;
+    let mut achieved: Vec<String> = Vec::new();
+    for skill in read_workspace_skills(record, &agent_skill_configs(store)) {
+        if skill.relative_path.eq_ignore_ascii_case(relative_path)
+            && !achieved.contains(&skill.agent)
+        {
+            achieved.push(skill.agent);
+        }
+    }
+    if achieved.is_empty() {
+        store.clear_project_skill_agent_override(&record.id, relative_path)
+    } else {
+        store.set_project_skill_agent_override(&record.id, relative_path, &achieved)
+    }
+    .map_err(AppError::db)?;
+    Ok(outcome)
+}
+
+/// Choose one skill's agents by hand. The skill is then left out of bulk
+/// agent changes until its override is cleared.
+#[tauri::command]
+pub async fn set_project_skill_agents(
+    store: State<'_, Arc<SkillStore>>,
+    project_id: String,
+    skill_relative_path: String,
+    agent_keys: Vec<String>,
+) -> Result<SkillOutcome, AppError> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        ensure_safe_skill_relative_path(&skill_relative_path)?;
+        let record = get_agent_selectable_project(&store, &project_id)?;
+        let desired = validated_agent_keys(&agent_skill_configs(&store), agent_keys)?;
+        choose_skill_agents(&store, &record, &skill_relative_path, &desired)
+    })
+    .await?
+}
+
+/// Drop a skill's hand-picked agents and put it back on the project's.
+#[tauri::command]
+pub async fn clear_project_skill_agents(
+    store: State<'_, Arc<SkillStore>>,
+    project_id: String,
+    skill_relative_path: String,
+) -> Result<SkillOutcome, AppError> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        ensure_safe_skill_relative_path(&skill_relative_path)?;
+        let record = get_agent_selectable_project(&store, &project_id)?;
+        store
+            .clear_project_skill_agent_override(&record.id, &skill_relative_path)
+            .map_err(AppError::db)?;
+        let desired = record
+            .agent_keys
+            .clone()
+            .unwrap_or_else(|| effective_project_agent_keys(&store, &record));
+        reconcile_skill_agents(&store, &record, &skill_relative_path, &desired, false)
     })
     .await?
 }
@@ -1267,14 +1573,16 @@ pub async fn delete_project_skill(
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_sync_status, ensure_distinct_linked_workspace_roots, find_best_center_match,
-        project_to_dto, remove_workspace_skill_target, set_project_skill_enabled_state,
+        agent_skill_configs, classify_sync_status, ensure_distinct_linked_workspace_roots,
+        export_agent_keys, find_best_center_match, project_to_dto, reconcile_skill_agents,
+        remove_workspace_skill_target, set_project_skill_enabled_state, skill_has_any_copy,
     };
     use crate::core::content_hash;
     use crate::core::error::ErrorKind;
     use crate::core::project_scanner::{AgentSkillConfig, ProjectSkillInfo};
-    use crate::core::skill_store::{ProjectRecord, SkillRecord};
+    use crate::core::skill_store::{ProjectRecord, SkillRecord, SkillStore};
     use std::fs;
+    use std::path::Path;
     use tempfile::tempdir;
 
     fn sample_managed_skill(
@@ -1355,6 +1663,7 @@ mod tests {
             in_center: true,
             sync_status: "project_only".to_string(),
             center_skill_id: Some("skill-1".to_string()),
+            agents_overridden: false,
             last_modified_at,
             content_hash,
         }
@@ -1382,6 +1691,7 @@ mod tests {
             in_center: false,
             sync_status: "project_only".to_string(),
             center_skill_id: None,
+            agents_overridden: false,
             last_modified_at: Some(1_000),
             content_hash,
         }
@@ -1504,6 +1814,7 @@ mod tests {
             sort_order: 0,
             created_at: 0,
             updated_at: 0,
+            agent_keys: None,
         };
         let configs = vec![
             AgentSkillConfig {
@@ -1522,6 +1833,136 @@ mod tests {
 
         assert_eq!(dto.skill_count, 1);
         assert_eq!(dto.sync_health.project_only, 1);
+    }
+
+    /// A store with two custom agents, `agent_a` (`.a/skills`) and `agent_b`
+    /// (`.b/skills`), a library skill `x`, and a project holding `x` for
+    /// agent_a as a link into the library.
+    fn agent_selection_fixture(
+        tmp: &Path,
+        agent_keys: Option<Vec<String>>,
+    ) -> (SkillStore, ProjectRecord) {
+        let store = SkillStore::new(&tmp.join("test.db")).unwrap();
+        let tools = serde_json::json!([
+            { "key": "agent_a", "display_name": "Agent A", "skills_dir": tmp.join("a"),
+              "project_relative_skills_dir": ".a/skills" },
+            { "key": "agent_b", "display_name": "Agent B", "skills_dir": tmp.join("b"),
+              "project_relative_skills_dir": ".b/skills" },
+        ]);
+        store
+            .set_setting("custom_tools", &tools.to_string())
+            .unwrap();
+
+        let library = tmp.join("library").join("x");
+        fs::create_dir_all(&library).unwrap();
+        fs::write(library.join("SKILL.md"), "---\nname: x\n---\n").unwrap();
+        store
+            .insert_skill(&sample_managed_skill(
+                library.to_string_lossy().to_string(),
+                None,
+                0,
+            ))
+            .unwrap();
+
+        let project_path = tmp.join("project");
+        fs::create_dir_all(project_path.join(".a/skills")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&library, project_path.join(".a/skills/x")).unwrap();
+
+        let record = ProjectRecord {
+            id: "project-1".to_string(),
+            name: "Project".to_string(),
+            path: project_path.to_string_lossy().to_string(),
+            workspace_type: "project".to_string(),
+            linked_agent_key: None,
+            linked_agent_name: None,
+            disabled_path: None,
+            sort_order: 0,
+            created_at: 0,
+            updated_at: 0,
+            agent_keys,
+        };
+        store.insert_project(&record).unwrap();
+        (store, record)
+    }
+
+    fn keys(items: &[&str]) -> Vec<String> {
+        items.iter().map(|item| item.to_string()).collect()
+    }
+
+    #[test]
+    fn export_without_named_agents_uses_the_project_selection() {
+        let tmp = tempdir().unwrap();
+        let (store, mut record) = agent_selection_fixture(tmp.path(), Some(keys(&["agent_b"])));
+
+        assert_eq!(
+            export_agent_keys(&store, &record, None).unwrap(),
+            keys(&["agent_b"])
+        );
+        assert_eq!(
+            export_agent_keys(&store, &record, Some(keys(&["agent_a"]))).unwrap(),
+            keys(&["agent_a"])
+        );
+
+        // A project that never chose keeps every available agent.
+        record.agent_keys = None;
+        let legacy = export_agent_keys(&store, &record, None).unwrap();
+        assert!(legacy.contains(&"agent_a".to_string()));
+        assert!(legacy.contains(&"agent_b".to_string()));
+
+        record.agent_keys = Some(Vec::new());
+        let err = export_agent_keys(&store, &record, None).unwrap_err();
+        assert_eq!(err.kind, ErrorKind::InvalidInput);
+    }
+
+    /// A hand-picked agent the skill could not be put on is reported, and not
+    /// recorded as one of its agents.
+    #[cfg(unix)]
+    #[test]
+    fn a_hand_picked_agent_is_recorded_only_once_the_skill_is_on_it() {
+        let tmp = tempdir().unwrap();
+        let (store, record) = agent_selection_fixture(tmp.path(), None);
+        let project = Path::new(&record.path);
+        fs::create_dir_all(project.join(".b")).unwrap();
+        fs::write(project.join(".b/skills"), "not a folder").unwrap();
+
+        let outcome =
+            super::choose_skill_agents(&store, &record, "x", &keys(&["agent_a", "agent_b"]))
+                .unwrap();
+
+        assert_eq!(outcome.failed.len(), 1);
+        assert_eq!(outcome.failed[0].agent, "agent_b");
+        let overrides = store.get_project_skill_agent_overrides(&record.id).unwrap();
+        assert_eq!(overrides.get("x"), Some(&keys(&["agent_a"])));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_skill_follows_its_own_agents_then_returns_to_the_project_set() {
+        let tmp = tempdir().unwrap();
+        let (store, record) = agent_selection_fixture(tmp.path(), Some(keys(&["agent_a"])));
+        let project = Path::new(&record.path);
+
+        let outcome =
+            reconcile_skill_agents(&store, &record, "x", &keys(&["agent_a", "agent_b"]), true)
+                .unwrap();
+        assert_eq!(outcome.added, keys(&["agent_b"]));
+        assert!(project.join(".b/skills/x/SKILL.md").is_file());
+
+        // What clearing the override does: back to the project's agents.
+        let outcome =
+            reconcile_skill_agents(&store, &record, "x", &keys(&["agent_a"]), false).unwrap();
+        assert_eq!(outcome.removed, keys(&["agent_b"]));
+        assert!(fs::symlink_metadata(project.join(".b/skills/x")).is_err());
+        assert!(project.join(".a/skills/x/SKILL.md").is_file());
+
+        let configs = agent_skill_configs(&store);
+        assert!(skill_has_any_copy(&configs, project, "x"));
+        fs::remove_file(project.join(".a/skills/x")).unwrap();
+        assert!(!skill_has_any_copy(&configs, project, "x"));
+        let err =
+            reconcile_skill_agents(&store, &record, "x", &keys(&["agent_a"]), false).unwrap_err();
+        assert_eq!(err.kind, ErrorKind::NotFound);
     }
 
     #[test]

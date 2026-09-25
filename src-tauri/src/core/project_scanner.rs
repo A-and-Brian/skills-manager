@@ -36,6 +36,9 @@ pub struct ProjectSkillInfo {
     pub sync_status: String,
     #[serde(default)]
     pub center_skill_id: Option<String>,
+    /// The user chose this skill's agents by hand, so bulk agent changes skip it.
+    #[serde(default)]
+    pub agents_overridden: bool,
     #[serde(skip_serializing)]
     pub last_modified_at: Option<i64>,
     #[serde(skip_serializing)]
@@ -207,6 +210,7 @@ fn read_skills_from_dir_recursive(
                 in_center: false,
                 sync_status: "project_only".to_string(),
                 center_skill_id: None,
+                agents_overridden: false,
                 last_modified_at,
                 content_hash,
             });

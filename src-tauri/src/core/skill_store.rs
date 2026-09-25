@@ -98,6 +98,9 @@ pub struct ProjectRecord {
     pub sort_order: i32,
     pub created_at: i64,
     pub updated_at: i64,
+    /// Agent group keys this project deploys to. `None` is a project that
+    /// never chose, which keeps using every installed and enabled agent.
+    pub agent_keys: Option<Vec<String>>,
 }
 
 /// A machine with Skills Manager reachable over SSH. Authentication is the
@@ -1162,9 +1165,9 @@ impl SkillStore {
         conn.execute(
             "INSERT INTO projects (
                 id, name, path, workspace_type, linked_agent_key, linked_agent_name, disabled_path,
-                sort_order, created_at, updated_at
+                sort_order, created_at, updated_at, agent_keys
              )
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 project.id,
                 project.name,
@@ -1176,6 +1179,7 @@ impl SkillStore {
                 project.sort_order,
                 project.created_at,
                 project.updated_at,
+                agent_keys_to_json(project.agent_keys.as_deref())?,
             ],
         )?;
         Ok(())
@@ -1185,24 +1189,11 @@ impl SkillStore {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, name, path, workspace_type, linked_agent_key, linked_agent_name, disabled_path,
-                    sort_order, created_at, updated_at
+                    sort_order, created_at, updated_at, agent_keys
              FROM projects
              ORDER BY sort_order, created_at",
         )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(ProjectRecord {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                path: row.get(2)?,
-                workspace_type: row.get(3)?,
-                linked_agent_key: row.get(4)?,
-                linked_agent_name: row.get(5)?,
-                disabled_path: row.get(6)?,
-                sort_order: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
-            })
-        })?;
+        let rows = stmt.query_map([], map_project_row)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
@@ -1210,30 +1201,77 @@ impl SkillStore {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, name, path, workspace_type, linked_agent_key, linked_agent_name, disabled_path,
-                    sort_order, created_at, updated_at
+                    sort_order, created_at, updated_at, agent_keys
              FROM projects
              WHERE id = ?1",
         )?;
-        let mut rows = stmt.query_map(params![id], |row| {
-            Ok(ProjectRecord {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                path: row.get(2)?,
-                workspace_type: row.get(3)?,
-                linked_agent_key: row.get(4)?,
-                linked_agent_name: row.get(5)?,
-                disabled_path: row.get(6)?,
-                sort_order: row.get(7)?,
-                created_at: row.get(8)?,
-                updated_at: row.get(9)?,
-            })
-        })?;
+        let mut rows = stmt.query_map(params![id], map_project_row)?;
         Ok(rows.next().and_then(|r| r.ok()))
     }
 
     pub fn delete_project(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    /// Replace a project's agent selection; `None` returns it to the legacy
+    /// "every installed and enabled agent" behaviour.
+    pub fn set_project_agent_keys(&self, id: &str, agent_keys: Option<&[String]>) -> Result<()> {
+        let json = agent_keys_to_json(agent_keys)?;
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE projects SET agent_keys = ?2, updated_at = ?3 WHERE id = ?1",
+            params![id, json, chrono::Utc::now().timestamp_millis()],
+        )?;
+        Ok(())
+    }
+
+    /// Skills of one project whose agents were chosen by hand, keyed by
+    /// relative path.
+    pub fn get_project_skill_agent_overrides(
+        &self,
+        project_id: &str,
+    ) -> Result<std::collections::HashMap<String, Vec<String>>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT relative_path, agent_keys FROM project_skill_agents WHERE project_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![project_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        Ok(rows
+            .filter_map(|r| r.ok())
+            .filter_map(|(path, json)| Some((path, serde_json::from_str(&json).ok()?)))
+            .collect())
+    }
+
+    pub fn set_project_skill_agent_override(
+        &self,
+        project_id: &str,
+        relative_path: &str,
+        agent_keys: &[String],
+    ) -> Result<()> {
+        let json = serde_json::to_string(agent_keys)?;
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO project_skill_agents (project_id, relative_path, agent_keys, updated_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![project_id, relative_path, json, chrono::Utc::now().timestamp_millis()],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_project_skill_agent_override(
+        &self,
+        project_id: &str,
+        relative_path: &str,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM project_skill_agents WHERE project_id = ?1 AND relative_path = ?2",
+            params![project_id, relative_path],
+        )?;
         Ok(())
     }
 
@@ -1598,6 +1636,29 @@ mod scenario_membership_tests {
     }
 }
 
+fn map_project_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRecord> {
+    Ok(ProjectRecord {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        path: row.get(2)?,
+        workspace_type: row.get(3)?,
+        linked_agent_key: row.get(4)?,
+        linked_agent_name: row.get(5)?,
+        disabled_path: row.get(6)?,
+        sort_order: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+        // A value that no longer parses reads as "never chose", the safe default.
+        agent_keys: row
+            .get::<_, Option<String>>(10)?
+            .and_then(|json| serde_json::from_str(&json).ok()),
+    })
+}
+
+fn agent_keys_to_json(agent_keys: Option<&[String]>) -> Result<Option<String>> {
+    Ok(agent_keys.map(serde_json::to_string).transpose()?)
+}
+
 fn map_skill_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SkillRecord> {
     Ok(SkillRecord {
         id: row.get(0)?,
@@ -1704,5 +1765,90 @@ mod tag_tests {
         let map = store.get_tags_map().unwrap();
         assert_eq!(map.get("a").unwrap(), &vec!["keep".to_string()]);
         assert!(map.get("b").is_none());
+    }
+}
+
+#[cfg(test)]
+mod project_agent_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn project(id: &str) -> ProjectRecord {
+        ProjectRecord {
+            id: id.to_string(),
+            name: id.to_string(),
+            path: format!("/tmp/{id}"),
+            workspace_type: "project".to_string(),
+            linked_agent_key: None,
+            linked_agent_name: None,
+            disabled_path: None,
+            sort_order: 0,
+            created_at: 0,
+            updated_at: 0,
+            agent_keys: None,
+        }
+    }
+
+    #[test]
+    fn project_agent_keys_round_trip_and_reset_to_legacy() {
+        let tmp = tempdir().unwrap();
+        let store = SkillStore::new(&tmp.path().join("test.db")).unwrap();
+        store.insert_project(&project("p1")).unwrap();
+        assert_eq!(
+            store.get_project_by_id("p1").unwrap().unwrap().agent_keys,
+            None
+        );
+
+        let keys = vec!["claude_code".to_string(), "cursor".to_string()];
+        store.set_project_agent_keys("p1", Some(&keys)).unwrap();
+        assert_eq!(
+            store.get_project_by_id("p1").unwrap().unwrap().agent_keys,
+            Some(keys.clone())
+        );
+        // An empty selection is a real choice, distinct from "never chose".
+        store.set_project_agent_keys("p1", Some(&[])).unwrap();
+        assert_eq!(
+            store.get_all_projects().unwrap()[0].agent_keys,
+            Some(Vec::new())
+        );
+
+        store.set_project_agent_keys("p1", None).unwrap();
+        assert_eq!(
+            store.get_project_by_id("p1").unwrap().unwrap().agent_keys,
+            None
+        );
+    }
+
+    #[test]
+    fn skill_agent_overrides_are_per_project_and_removed_with_it() {
+        let tmp = tempdir().unwrap();
+        let store = SkillStore::new(&tmp.path().join("test.db")).unwrap();
+        store.insert_project(&project("p1")).unwrap();
+        store.insert_project(&project("p2")).unwrap();
+
+        let cursor = vec!["cursor".to_string()];
+        let set = |project: &str, path: &str, keys: &[String]| {
+            store
+                .set_project_skill_agent_override(project, path, keys)
+                .unwrap()
+        };
+        set("p1", "a", &cursor);
+        set("p1", "b", &[]);
+        set("p2", "a", &[]);
+        // Writing again replaces rather than duplicates.
+        set("p1", "b", &cursor);
+
+        let overrides = store.get_project_skill_agent_overrides("p1").unwrap();
+        assert_eq!(overrides.len(), 2);
+        assert_eq!(overrides.get("b"), Some(&cursor));
+
+        store.clear_project_skill_agent_override("p1", "a").unwrap();
+        let overrides_of =
+            |project: &str| store.get_project_skill_agent_overrides(project).unwrap();
+        assert!(!overrides_of("p1").contains_key("a"));
+
+        store.delete_project("p1").unwrap();
+        assert!(overrides_of("p1").is_empty());
+        assert_eq!(overrides_of("p2").len(), 1);
     }
 }
