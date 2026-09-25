@@ -4,9 +4,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
-use tauri::Emitter;
 
-use super::{central_repo, skill_store::SkillStore, tool_adapters};
+use super::{central_repo, host::HostEvents, skill_store::SkillStore, tool_adapters};
 
 const APP_FS_CHANGED_EVENT: &str = "app-files-changed";
 const WATCH_RESCAN_INTERVAL: Duration = Duration::from_secs(3);
@@ -283,7 +282,7 @@ fn touches_central_repo(event: &Event) -> bool {
         .any(|p| p.starts_with(&skills_dir) && !is_in_git_dir(p))
 }
 
-pub fn start_file_watcher<R: tauri::Runtime>(app: tauri::AppHandle<R>, store: Arc<SkillStore>) {
+pub fn start_file_watcher(events: Arc<dyn HostEvents>, store: Arc<SkillStore>) {
     std::thread::spawn(move || {
         let (tx, rx) = std::sync::mpsc::channel();
         let mut watcher = match RecommendedWatcher::new(
@@ -308,11 +307,8 @@ pub fn start_file_watcher<R: tauri::Runtime>(app: tauri::AppHandle<R>, store: Ar
         let mut pending_emit = false;
 
         let emit_now = |last_emit: &mut Instant| {
-            if let Err(err) = app.emit(APP_FS_CHANGED_EVENT, ()) {
-                log::debug!("Failed to emit app-files-changed: {err}");
-            } else {
-                *last_emit = Instant::now();
-            }
+            events.emit(APP_FS_CHANGED_EVENT, serde_json::Value::Null);
+            *last_emit = Instant::now();
         };
 
         loop {

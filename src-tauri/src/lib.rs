@@ -808,13 +808,9 @@ pub fn run() {
     let pre_builder_ms = pre_builder_start.elapsed().as_millis();
     let store_for_setup = store.clone();
 
-    let cancel_registry = Arc::new(core::install_cancel::InstallCancelRegistry::new());
-    let cancel_for_setup = cancel_registry.clone();
-
     let builder_start = Instant::now();
     tauri::Builder::default()
         .manage(store)
-        .manage(cancel_registry)
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             restore_main_window(app);
         }))
@@ -853,11 +849,12 @@ pub fn run() {
             )?;
 
             core::panic_log::install_panic_hook(app.handle().clone());
-            app.manage(core::host::HostCtx {
+            let host = core::host::HostCtx {
                 store: store_for_setup.clone(),
-                cancel: cancel_for_setup,
+                cancel: Arc::new(core::install_cancel::InstallCancelRegistry::new()),
                 events: Arc::new(core::host::TauriEvents(app.handle().clone())),
-            });
+            };
+            app.manage(host.clone());
             log::info!(
                 "app start: version={} os={} arch={}",
                 app.config().version.clone().unwrap_or_default(),
@@ -927,7 +924,7 @@ pub fn run() {
             }
 
             let step = Instant::now();
-            core::file_watcher::start_file_watcher(app.handle().clone(), store_for_setup.clone());
+            core::file_watcher::start_file_watcher(host.events.clone(), store_for_setup.clone());
             log::info!(
                 "startup: start_file_watcher done in {} ms",
                 step.elapsed().as_millis()
