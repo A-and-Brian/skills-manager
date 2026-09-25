@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use tempfile::{tempdir, TempDir};
 
 use crate::core::{
-    central_repo,
+    central_repo, git_credentials,
     skill_store::{SkillRecord, SkillStore},
 };
 
@@ -73,4 +73,49 @@ pub(crate) fn write_skill(dir: &Path, name: &str) {
         format!("---\nname: {name}\ndescription: d\n---\nbody\n"),
     )
     .unwrap();
+}
+
+pub(crate) struct TestEnv {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    pub(crate) _tmp: tempfile::TempDir,
+    pub(crate) store: SkillStore,
+    pub(crate) skills_dir: std::path::PathBuf,
+}
+
+impl Drop for TestEnv {
+    fn drop(&mut self) {
+        central_repo::set_test_base_dir_override(None);
+    }
+}
+
+/// Isolated base dir (askpass script, skills repo, DB) + mock keyring.
+pub(crate) fn test_env() -> TestEnv {
+    git_credentials::use_mock_keyring();
+    let lock = central_repo::test_base_dir_lock();
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path().join("base");
+    central_repo::set_test_base_dir_override(Some(base.clone()));
+    let skills_dir = central_repo::skills_dir();
+    std::fs::create_dir_all(&skills_dir).unwrap();
+    let store = SkillStore::new(&base.join("test.db")).unwrap();
+    TestEnv {
+        _lock: lock,
+        _tmp: tmp,
+        store,
+        skills_dir,
+    }
+}
+
+pub(crate) fn git(dir: &Path, args: &[&str]) {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }

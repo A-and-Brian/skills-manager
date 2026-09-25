@@ -228,7 +228,7 @@ pub(crate) fn run_round_blocking(store: &SkillStore) -> Outcome {
     if git_backup::raw_remote_url(&skills_dir).is_none() {
         return Outcome::Skipped("no remote");
     }
-    crate::commands::git_backup::sync_engine_pref(store);
+    crate::core::git_backup_store::sync_engine_pref(store);
 
     // Fail fast instead of queueing behind a user-initiated operation.
     let Ok(_lock) = RepoLock::acquire("auto backup") else {
@@ -254,7 +254,7 @@ pub(crate) fn run_round_blocking(store: &SkillStore) -> Outcome {
         return Outcome::Skipped("needs manual repair");
     }
 
-    crate::commands::git_backup::apply_device_identity(store, &skills_dir);
+    crate::core::git_backup_store::apply_device_identity(store, &skills_dir);
     if let Err(e) = sync_metadata::write_all_from_db_unlocked(store) {
         return Outcome::Failed(format!("{e:#}"));
     }
@@ -294,7 +294,8 @@ pub(crate) fn run_round_blocking(store: &SkillStore) -> Outcome {
         }
         match merge::gated_pull_unlocked(store, &skills_dir) {
             Ok(_summary) => {
-                if let Err(e) = crate::commands::git_backup::reconcile_skills_index_unlocked(store)
+                if let Err(e) =
+                    crate::core::git_backup_store::reconcile_skills_index_unlocked(store)
                 {
                     return Outcome::Failed(format!("{e:#}"));
                 }
@@ -350,7 +351,7 @@ pub fn commit_on_exit(store: &SkillStore) {
     if git_backup::ensure_no_interrupted_git_operation(&skills_dir).is_err() {
         return;
     }
-    crate::commands::git_backup::apply_device_identity(store, &skills_dir);
+    crate::core::git_backup_store::apply_device_identity(store, &skills_dir);
     if let Err(e) = sync_metadata::write_all_from_db_unlocked(store) {
         log::warn!("auto backup on exit: metadata write failed: {e:#}");
     }
