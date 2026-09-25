@@ -17,6 +17,7 @@ use crate::core::{
     installer, path_guard,
     repo_lock::RepoLock,
     scanner,
+    skill_delete::{delete_managed_skills_by_ids, BatchDeleteSkillsResult},
     skill_metadata::{self, is_valid_skill_dir},
     skill_store::{SkillRecord, SkillStore, SkillTargetRecord},
     skill_tags::{delete_tag_internal, rename_tag_internal, set_skill_tags_internal},
@@ -186,12 +187,6 @@ pub struct BatchUpdateSkillsResult {
     /// version does not have. Named so the user can go and look, rather than
     /// wondering why the badge did not clear.
     pub held_back: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BatchDeleteSkillsResult {
-    pub deleted: usize,
-    pub failed: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -774,54 +769,6 @@ pub fn delete_managed_skills_core(
 ) -> Result<BatchDeleteSkillsResult, AppError> {
     let store = ctx.store.clone();
     delete_managed_skills_by_ids(&store, &skill_ids)
-}
-
-pub fn delete_managed_skills_by_ids(
-    store: &SkillStore,
-    skill_ids: &[String],
-) -> Result<BatchDeleteSkillsResult, AppError> {
-    sync_metadata::with_repo_lock("delete skills", || {
-        let mut deleted = 0;
-        let mut failed = Vec::new();
-
-        for skill_id in skill_ids {
-            let Some(skill) = store.get_skill_by_id(skill_id)? else {
-                store.log_audit(
-                    AuditDraft::new("remove")
-                        .skill(skill_id.clone(), "")
-                        .fail("not found"),
-                );
-                failed.push(skill_id.clone());
-                continue;
-            };
-
-            let targets = store.get_targets_for_skill(skill_id)?;
-            for target in &targets {
-                let target_path = PathBuf::from(&target.target_path);
-                sync_engine::remove_target(&target_path).ok();
-            }
-
-            let central = PathBuf::from(&skill.central_path);
-            if central.exists() {
-                std::fs::remove_dir_all(&central).ok();
-            }
-
-            store.delete_skill(skill_id)?;
-            store.log_audit(
-                AuditDraft::new("remove")
-                    .skill(skill_id.clone(), skill.name.clone())
-                    .ok(),
-            );
-            deleted += 1;
-        }
-
-        if deleted > 0 {
-            sync_metadata::write_all_from_db_unlocked(store)?;
-        }
-
-        Ok(BatchDeleteSkillsResult { deleted, failed })
-    })
-    .map_err(AppError::db)
 }
 
 /// Append an audit log entry summarising an install attempt.
@@ -3276,123 +3223,9 @@ fn remove_path_if_exists(path: &Path) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::test_support::{sample_skill, test_repo, write_skill_dir, TestRepo};
     use std::fs;
-    use tempfile::{tempdir, TempDir};
-
-    struct TestRepo {
-        _lock: std::sync::MutexGuard<'static, ()>,
-        _tmp: TempDir,
-        store: SkillStore,
-    }
-
-    impl Drop for TestRepo {
-        fn drop(&mut self) {
-            central_repo::set_test_base_dir_override(None);
-        }
-    }
-
-    fn test_repo() -> TestRepo {
-        let lock = central_repo::test_base_dir_lock();
-        let tmp = tempdir().unwrap();
-        let base = tmp.path().join("repo");
-        central_repo::set_test_base_dir_override(Some(base.clone()));
-        fs::create_dir_all(central_repo::skills_dir()).unwrap();
-        let store = SkillStore::new(&base.join("test.db")).unwrap();
-        TestRepo {
-            _lock: lock,
-            _tmp: tmp,
-            store,
-        }
-    }
-
-    fn write_skill_dir(name: &str) -> PathBuf {
-        let dir = central_repo::skills_dir().join(name);
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("SKILL.md"), format!("---\nname: {name}\n---\n")).unwrap();
-        dir
-    }
-
-    fn sample_skill(id: &str, name: &str, central_path: &Path) -> SkillRecord {
-        SkillRecord {
-            id: id.to_string(),
-            name: name.to_string(),
-            description: None,
-            source_type: "import".to_string(),
-            source_ref: Some(central_path.to_string_lossy().to_string()),
-            source_ref_resolved: None,
-            source_subpath: None,
-            source_branch: None,
-            source_revision: None,
-            remote_revision: None,
-            central_path: central_path.to_string_lossy().to_string(),
-            content_hash: None,
-            enabled: true,
-            created_at: 1,
-            updated_at: 1,
-            status: "ok".to_string(),
-            update_status: "local_only".to_string(),
-            last_checked_at: None,
-            last_check_error: None,
-        }
-    }
-
-    #[test]
-    fn batch_delete_removes_skills_targets_and_stale_metadata_once() {
-        let repo = test_repo();
-        let skill_one_dir = write_skill_dir("skill-one");
-        let skill_two_dir = write_skill_dir("skill-two");
-        repo.store
-            .insert_skill(&sample_skill("skill-1", "skill-one", &skill_one_dir))
-            .unwrap();
-        repo.store
-            .insert_skill(&sample_skill("skill-2", "skill-two", &skill_two_dir))
-            .unwrap();
-
-        let target_dir = repo._tmp.path().join("target-skill-one");
-        fs::create_dir_all(&target_dir).unwrap();
-        fs::write(target_dir.join("SKILL.md"), "# target").unwrap();
-        repo.store
-            .insert_target(&SkillTargetRecord {
-                id: "target-1".to_string(),
-                skill_id: "skill-1".to_string(),
-                tool: "cursor".to_string(),
-                target_path: target_dir.to_string_lossy().to_string(),
-                mode: "symlink".to_string(),
-                status: "ok".to_string(),
-                synced_at: Some(1),
-                last_error: None,
-                source_hash: None,
-            })
-            .unwrap();
-
-        sync_metadata::write_all_from_db_unlocked(&repo.store).unwrap();
-        assert!(sync_metadata::metadata_dir()
-            .join("skills/skill-1.json")
-            .exists());
-        assert!(sync_metadata::metadata_dir()
-            .join("skills/skill-2.json")
-            .exists());
-
-        let result = delete_managed_skills_by_ids(
-            &repo.store,
-            &["skill-1".to_string(), "missing-skill".to_string()],
-        )
-        .unwrap();
-
-        assert_eq!(result.deleted, 1);
-        assert_eq!(result.failed, vec!["missing-skill".to_string()]);
-        assert!(repo.store.get_skill_by_id("skill-1").unwrap().is_none());
-        assert!(repo.store.get_skill_by_id("skill-2").unwrap().is_some());
-        assert!(!skill_one_dir.exists());
-        assert!(skill_two_dir.exists());
-        assert!(!target_dir.exists());
-        assert!(!sync_metadata::metadata_dir()
-            .join("skills/skill-1.json")
-            .exists());
-        assert!(sync_metadata::metadata_dir()
-            .join("skills/skill-2.json")
-            .exists());
-    }
+    use tempfile::tempdir;
 
     /// The whole point of the preflight: it must see the user's file in the
     /// library *and* the one in an agent's deployed copy, and say which is

@@ -6,7 +6,7 @@ use anyhow::{anyhow, bail, Context};
 use app_lib::commands::{presets as preset_cmd, skills as cmd, tools as tool_cmd};
 use app_lib::core::{
     app_state, audit_log::AuditDraft, central_repo, error::AppError, git_backup, git_fetcher,
-    installer, merge, repo_lock::RepoLock, scenario_service, serve, skill_metadata,
+    installer, merge, repo_lock::RepoLock, scenario_service, serve, skill_delete, skill_metadata,
     skill_store::SkillStore, skill_tags, skillssh_api, sync_engine, sync_metadata, tool_adapters,
     tool_service,
 };
@@ -1873,7 +1873,7 @@ fn run_remove(
         bail!("refusing to delete {} skill(s) without --yes", ids.len());
     }
 
-    let result = cmd::delete_managed_skills_by_ids(store, &ids).map_err(map_app_err)?;
+    let result = skill_delete::delete_managed_skills_by_ids(store, &ids).map_err(map_app_err)?;
     for missing in result.failed {
         failed.push(format!("{missing}: not found"));
     }

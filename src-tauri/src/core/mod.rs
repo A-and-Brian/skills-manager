@@ -31,12 +31,15 @@ pub mod scanner;
 pub mod scenario_service;
 pub mod serve;
 pub mod skill_auto_updater;
+pub mod skill_delete;
 pub mod skill_metadata;
 pub mod skill_store;
 pub mod skill_tags;
 pub mod skillssh_api;
 pub mod sync_engine;
 pub mod sync_metadata;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub mod timing;
 pub mod tool_adapters;
 pub mod tool_service;
