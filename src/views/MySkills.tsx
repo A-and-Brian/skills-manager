@@ -33,6 +33,7 @@ import { toast } from "sonner";
 import { cn } from "../utils";
 import { useApp } from "../context/AppContext";
 import { useMultiSelect } from "../hooks/useMultiSelect";
+import { useLibraryViewPrefs } from "../hooks/useLibraryViewPrefs";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TagRenameDialog } from "../components/TagRenameDialog";
 import { SkillDetailPanel } from "../components/SkillDetailPanel";
@@ -97,13 +98,6 @@ function getToolDisplayName(toolKey: string, tools: ToolInfo[]) {
   return tools.find((tool) => tool.key === toolKey)?.display_name || toolKey;
 }
 
-const GROUP_BY_SETTING = "library_group_by";
-const SORT_BY_SETTING = "library_sort_by";
-const isGroupBy = (v: string | null): v is LibraryGroupBy =>
-  LIBRARY_GROUP_BY_OPTIONS.includes(v as LibraryGroupBy);
-const isSortBy = (v: string | null): v is LibrarySortBy =>
-  LIBRARY_SORT_BY_OPTIONS.includes(v as LibrarySortBy);
-
 export function MySkills() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -131,10 +125,7 @@ export function MySkills() {
   const [agentFilters, setAgentFilters] = useState<Set<string>>(new Set());
   const [creatorFilters, setCreatorFilters] = useState<Set<string>>(new Set());
   const [updateFilters, setUpdateFilters] = useState<Set<LibraryUpdateFilter>>(new Set());
-  // Group and sort are layout preferences, so they persist across launches.
-  // Filters are per-session, like search.
-  const [groupBy, setGroupBy] = useState<LibraryGroupBy>("none");
-  const [sortBy, setSortBy] = useState<LibrarySortBy>("name");
+  const { groupBy, sortBy, chooseGroupBy, chooseSortBy } = useLibraryViewPrefs();
   const [allTags, setAllTags] = useState<string[]>([]);
   // Tag management from the filter popover (#233): right-click a tag to
   // rename (dialog) or delete (confirm). Left-click stays "filter only".
@@ -185,26 +176,6 @@ export function MySkills() {
       .then((rows) => setConflictIds(new Set(rows.map((row) => row.skill_id))))
       .catch(() => setConflictIds(new Set()));
   }, [skills, onRemote]);
-
-  useEffect(() => {
-    Promise.all([api.getSettings(GROUP_BY_SETTING), api.getSettings(SORT_BY_SETTING)])
-      .then(([savedGroup, savedSort]) => {
-        if (isGroupBy(savedGroup)) setGroupBy(savedGroup);
-        if (isSortBy(savedSort)) setSortBy(savedSort);
-      })
-      .catch(() => {
-        // defaults are fine
-      });
-  }, []);
-
-  const chooseGroupBy = (value: LibraryGroupBy) => {
-    setGroupBy(value);
-    void api.setSettings(GROUP_BY_SETTING, value).catch(() => {});
-  };
-  const chooseSortBy = (value: LibrarySortBy) => {
-    setSortBy(value);
-    void api.setSettings(SORT_BY_SETTING, value).catch(() => {});
-  };
 
   const groupLabel = (key: string) => {
     if (groupBy === "tag") return key === NO_TAG_GROUP ? t("mySkills.tags.untagged") : key;
