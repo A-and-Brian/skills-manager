@@ -148,14 +148,15 @@ Claude Code · Codex · Cursor · GitHub Copilot · Gemini CLI · GitLab Duo · 
 ### Prerequisites
 
 - Node.js 20.19+ or 22.12+ (required by Vite 7)
+- pnpm (run `corepack enable` to use the version pinned in `package.json`)
 - Rust 1.77.2 or newer
 - [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS
 
 ### Development
 
 ```bash
-npm install
-npm run tauri:dev
+pnpm install
+pnpm tauri:dev
 ```
 
 ### CLI
@@ -164,22 +165,22 @@ The repository includes an agent-friendly CLI built on the same Rust shared core
 
 ```bash
 # Look around
-npm run cli -- skills list
-npm run cli -- skills show db
+pnpm cli skills list
+pnpm cli skills show db
 
 # Install into the library (does NOT deploy to any agent by itself)
-npm run cli -- skills install ./my-skill
-npm run cli -- skills install https://github.com/foo/bar/tree/main/skills/baz
-npm run cli -- skills install vercel-labs/agent-skills@react-best-practices
+pnpm cli skills install ./my-skill
+pnpm cli skills install https://github.com/foo/bar/tree/main/skills/baz
+pnpm cli skills install vercel-labs/agent-skills@react-best-practices
 
 # Put it into the agents that should have it, then check
-npm run cli -- skills deploy react-best-practices --agent claude_code --agent codex
-npm run cli -- skills status react-best-practices
+pnpm cli skills deploy react-best-practices --agent claude_code --agent codex
+pnpm cli skills status react-best-practices
 
 # Pull upstream changes, and adopt what an agent already has
-npm run cli -- skills check --all
-npm run cli -- skills update --all
-npm run cli -- skills adopt ~/.claude/skills --dry-run
+pnpm cli skills check --all
+pnpm cli skills update --all
+pnpm cli skills adopt ~/.claude/skills --dry-run
 ```
 
 `--help` on any group or subcommand prints the full surface — the groups below
@@ -198,7 +199,7 @@ Extra flags:
 - `--json` — machine-readable output for scripts/agents. Failures print `{"ok": false, "code": …, "message": …}` on stderr with a non-zero exit. A deployment refused because the target is not ours carries the paths as data (`code: "TARGET_CONFLICT"`, `details.conflicts[].path`) so a caller can name the directory in the way instead of quoting a sentence.
 
 ```bash
-npm run -s cli -- --skills-root /path/to/my-skills --json skills list
+pnpm --silent cli --skills-root /path/to/my-skills --json skills list
 ```
 
 #### Where the binary lives
@@ -208,7 +209,7 @@ At startup the app publishes a copy of its own CLI to `~/.skills-manager/bin/ski
 Putting the CLI on your *own* PATH, for typing commands yourself, is separate:
 
 ```bash
-npm run cli:install
+pnpm cli:install
 # equivalent to:
 # cargo install --path src-tauri --bin skills-manager-cli --locked --force
 ```
@@ -224,8 +225,8 @@ The CLI and desktop app share the same SQLite database and repository lock. The 
 ### Build
 
 ```bash
-npm run tauri:build
-npm run cli:build
+pnpm tauri:build
+pnpm cli:build
 ```
 
 ### Changesets and releases
@@ -233,8 +234,8 @@ npm run cli:build
 Every PR that changes the app (`src/`, `src-tauri/`, `skills/` and similar) needs a changeset, which the **Changeset** check enforces:
 
 ```bash
-npx changeset          # pick patch/minor/major and describe the change
-npx changeset --empty  # an app change that doesn't need a changelog entry
+pnpm changeset          # pick patch/minor/major and describe the change
+pnpm changeset --empty  # an app change that doesn't need a changelog entry
 ```
 
 Changes to docs and CI don't need one.
