@@ -4,14 +4,16 @@ use app_lib::core::{skill_source, skill_store::SkillStore};
 
 use crate::args::{SkillsArgs, SkillsCommand};
 use crate::output::{map_app_err, print_json};
+use crate::run_tag;
+use crate::skills::adopt::run_adopt;
 use crate::skills::deploy::{run_deprecated_set_enabled, run_skill_deployment, run_sync};
 use crate::skills::install::{classify_ref, run_install, run_remove, run_search, SyncTarget};
 use crate::skills::list::{
     export_skill, list_skills_filtered, resolve_skill, show_skill, skill_status,
 };
 use crate::skills::update::{run_check, run_update};
-use crate::{run_adopt, run_tag};
 
+pub(crate) mod adopt;
 pub(crate) mod deploy;
 pub(crate) mod install;
 pub(crate) mod list;
