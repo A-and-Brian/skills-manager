@@ -1,16 +1,36 @@
 name: Build & Release
 
+# Started by version.yml once a version PR merges, or by hand to retry a
+# failed release: `gh workflow run release.yml --ref vX.Y.Z`. There is no tag
+# trigger on purpose: a hand-pushed tag would skip the version PR and ship a
+# build whose version files and changelog disagree with the tag.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  # tauri-action creates the release tag itself if it is missing, so a run
+  # started on a branch would cut a release from whatever that branch holds.
+  check-ref:
+    runs-on: ubuntu-latest
+    name: Check release tag
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Require a tag matching package.json
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${{ github.ref }}" != "refs/tags/v${VERSION}" ]; then
+            echo "Run this on the release tag (v${VERSION}), not ${{ github.ref }}:" >&2
+            echo "  gh workflow run release.yml --ref v${VERSION}" >&2
+            exit 1
+          fi
+
   build:
+    needs: check-ref
     strategy:
       fail-fast: false
       matrix:

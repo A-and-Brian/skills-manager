@@ -231,7 +231,20 @@ npx changeset --empty  # an app change that doesn't need a changelog entry
 
 Changes to docs and CI don't need one.
 
-Once changesets land on `main`, the **Version** workflow opens a `chore: version packages` PR. That PR bumps every version file and writes `CHANGELOG.md`. Merging it tags `vX.Y.Z` and starts the **Build & Release** workflow.
+Once changesets land on `main`, the **Version** workflow opens a `chore: version packages` PR. That PR bumps every version file and writes `CHANGELOG.md`. Merging it tags `vX.Y.Z` and starts the **Build & Release** workflow. Merging the version PR is the only way to cut a release. Don't push `v*` tags by hand.
+
+If the release build fails after the tag exists, merging again won't retry it, because the Version workflow won't release a tag twice. Once the cause is fixed, do one of these:
+
+- Re-run the failed jobs from the Actions tab. They build the same tagged commit.
+- If the fix is in the workflow or in repo secrets, start a new run on the tag:
+
+  ```bash
+  gh workflow run release.yml --ref vX.Y.Z
+  ```
+
+  If it then fails on assets already attached to the draft release, delete that draft and run it again.
+
+If the fix needs a code change, merge it with a changeset and release the next version instead. A tag always stays on the commit it was cut from.
 
 ## Troubleshooting
 
