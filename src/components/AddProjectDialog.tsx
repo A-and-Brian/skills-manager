@@ -5,6 +5,7 @@ import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 import { cn } from "../utils";
 import * as api from "../lib/tauri";
 import { DeployModePicker } from "./DeployModePicker";
+import { useRemotePickerBlock } from "../hooks/useRemotePickerBlock";
 
 interface Props {
   open: boolean;
@@ -24,6 +25,7 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
   const [linkedName, setLinkedName] = useState("");
   const [linkedPath, setLinkedPath] = useState("");
   const [deployMode, setDeployMode] = useState<api.ProjectDeployMode>("link");
+  const pickerBlock = useRemotePickerBlock();
 
   useEffect(() => {
     if (!open) return;
@@ -176,8 +178,9 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
             </p>
             <button
               onClick={handleSelectFolder}
-              disabled={adding}
-              className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg border border-dashed border-border-subtle hover:border-border bg-background text-[13px] text-tertiary hover:text-secondary transition-all outline-none"
+              disabled={adding || !!pickerBlock}
+              title={pickerBlock}
+              className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg border border-dashed border-border-subtle hover:border-border bg-background text-[13px] text-tertiary hover:text-secondary transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FolderOpen className="w-4 h-4 text-muted" />
               {adding ? t("common.loading") : t("project.addManual")}
@@ -196,8 +199,9 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
               />
               <button
                 onClick={handleSelectBrowse}
-                className="px-2.5 rounded-lg border border-border-subtle bg-background text-muted hover:text-secondary hover:border-border transition-all outline-none"
-                title={t("project.scanDir")}
+                disabled={!!pickerBlock}
+                className="px-2.5 rounded-lg border border-border-subtle bg-background text-muted hover:text-secondary hover:border-border transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                title={pickerBlock ?? t("project.scanDir")}
               >
                 <FolderOpen className="w-4 h-4" />
               </button>
@@ -306,8 +310,9 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
                   const dir = await dialogOpen({ directory: true, multiple: false });
                   if (dir) setLinkedPath(dir as string);
                 }}
-                className="px-2.5 rounded-lg border border-border-subtle bg-background text-muted hover:text-secondary hover:border-border transition-all outline-none"
-                title={t("project.selectSkillsDir")}
+                disabled={!!pickerBlock}
+                className="px-2.5 rounded-lg border border-border-subtle bg-background text-muted hover:text-secondary hover:border-border transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                title={pickerBlock ?? t("project.selectSkillsDir")}
               >
                 <FolderOpen className="w-4 h-4" />
               </button>

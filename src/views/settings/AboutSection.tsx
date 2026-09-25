@@ -104,8 +104,9 @@ export function AboutSection({ reportingIssue, onReportIssue }: AboutSectionProp
       // The updater plugin does not inherit the app's proxy setting the way
       // `check_app_update` does. Without this, a user behind a proxy is told a
       // new version exists and then cannot install it. The proxy given to
-      // check() is carried through to the download.
-      const proxy = (await api.getSettings("proxy_url")) || undefined;
+      // check() is carried through to the download. The update is this
+      // computer's, so is the proxy, even while a host is active.
+      const proxy = (await api.getLocalSettings("proxy_url")) || undefined;
       const update = await checkUpdater(proxy ? { proxy } : undefined);
       if (!update) {
         toast.success(t("settings.noUpdate"));

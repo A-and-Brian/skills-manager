@@ -835,7 +835,8 @@
     "trayIconDesc": "Show an icon in the system tray for quick Show and Quit actions.",
     "trayIcon_on": "Show",
     "trayIcon_off": "Hide",
-    "trayIconOffHint": "Tray icon is hidden, so closing the window will quit the app."
+    "trayIconOffHint": "Tray icon is hidden, so closing the window will quit the app.",
+    "repoPathReconnectNotice": "Reconnect to {{name}} to apply the new path and migrate its existing data."
   },
   "closeAction": {
     "title": "Close behavior",
@@ -1265,5 +1266,25 @@
       "noRemoteSource": "No remote source",
       "writesBlocked": "Deploying is disabled until the CLI on this host matches the app's major version."
     }
+  },
+  "hostSwitcher": {
+    "label": "Machine",
+    "local": "Local",
+    "localDetail": "This computer",
+    "connecting": "Connecting to {{name}}…",
+    "manage": "Manage hosts…",
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "connectFailed": "Couldn’t connect to {{name}}"
+  },
+  "remoteSession": {
+    "operatingOn": "Operating on",
+    "switchToLocal": "Switch to Local",
+    "lost": "Connection to {{name}} was lost.",
+    "reconnect": "Reconnect",
+    "pickerUnavailable": "Choosing folders on {{name}} isn’t available yet.",
+    "finderUnavailable": "Folders on {{name}} can’t be opened from this computer.",
+    "backupLocalTitle": "Backup runs per machine.",
+    "backupLocalBody": "This page manages this computer’s backup. {{name}} backs up from its own Skills Manager to the same repository."
   }
 }

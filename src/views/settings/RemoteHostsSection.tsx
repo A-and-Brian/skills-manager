@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { RefreshCw, Loader2, Pencil, Plus, Trash2, X, Check, Server } from "lucide-react";
+import { RefreshCw, Loader2, Pencil, Plus, Trash2, X, Check, Server, Plug, Unplug } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { confirm as dialogConfirm } from "@tauri-apps/plugin-dialog";
@@ -23,7 +23,7 @@ type RemoteProbeState =
 
 export function RemoteHostsSection() {
   const { t } = useTranslation();
-  const { remoteHosts, refreshRemoteHosts } = useApp();
+  const { remoteHosts, refreshRemoteHosts, activeHost, connectingHostId, switchHost } = useApp();
   const [form, setForm] = useState<RemoteHostForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [probes, setProbes] = useState<Record<string, RemoteProbeState>>({});
@@ -54,6 +54,7 @@ export function RemoteHostsSection() {
     const confirmed = await dialogConfirm(t("remoteHosts.removeConfirm", { name: host.name }));
     if (!confirmed) return;
     try {
+      if (activeHost?.id === host.id) await switchHost(null);
       await api.remoteHostRemove(host.id);
       await refreshRemoteHosts();
       toast.success(t("remoteHosts.removed"));
@@ -179,6 +180,29 @@ export function RemoteHostsSection() {
                   {renderProbe(probes[host.id])}
                 </div>
               </div>
+              {activeHost?.id === host.id ? (
+                <button
+                  onClick={() => void switchHost(null)}
+                  disabled={connectingHostId !== null}
+                  className={`${actionButtonClass} border-accent-border bg-accent-bg text-accent`}
+                >
+                  <Unplug className="w-3 h-3" />
+                  {t("hostSwitcher.disconnect")}
+                </button>
+              ) : (
+                <button
+                  onClick={() => void switchHost(host.id)}
+                  disabled={connectingHostId !== null}
+                  className={`${actionButtonClass} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
+                >
+                  {connectingHostId === host.id ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Plug className="w-3 h-3" />
+                  )}
+                  {t("hostSwitcher.connect")}
+                </button>
+              )}
               <button
                 onClick={() => handleProbe(host)}
                 disabled={probes[host.id]?.state === "checking"}

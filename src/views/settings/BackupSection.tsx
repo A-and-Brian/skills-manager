@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
 import * as api from "../../lib/tauri";
 import { ACTION_BUTTON_CLASS, FIELD_CLASS } from "./shared";
+import { LocalBackupNotice } from "../../components/LocalBackupNotice";
 
 export function BackupSection() {
   const { t } = useTranslation();
@@ -66,6 +67,7 @@ export function BackupSection() {
       <h2 className="app-section-title mb-3">
         {t("settings.gitSyncConfig")}
       </h2>
+      <LocalBackupNotice className="mb-3" />
       <div className="app-panel overflow-hidden divide-y divide-border-faint">
         <div className="px-4 py-3">
           <h3 className="text-[14px] font-semibold text-primary">{t("settings.gitRemoteUrl")}</h3>

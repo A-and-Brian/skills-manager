@@ -835,7 +835,8 @@
     "trayIconDesc": "在系统托盘中显示图标，便于快速执行显示和退出操作。",
     "trayIcon_on": "显示",
     "trayIcon_off": "隐藏",
-    "trayIconOffHint": "托盘图标已隐藏，关闭窗口时将直接退出应用。"
+    "trayIconOffHint": "托盘图标已隐藏，关闭窗口时将直接退出应用。",
+    "repoPathReconnectNotice": "重新连接 {{name}} 后，新路径会生效并迁移已有数据。"
   },
   "closeAction": {
     "title": "关闭行为",
@@ -1265,5 +1266,25 @@
       "noRemoteSource": "无远程来源",
       "writesBlocked": "在该主机的 CLI 与应用主版本一致之前，无法部署。"
     }
+  },
+  "hostSwitcher": {
+    "label": "机器",
+    "local": "本机",
+    "localDetail": "这台电脑",
+    "connecting": "正在连接 {{name}}…",
+    "manage": "管理主机…",
+    "connect": "连接",
+    "disconnect": "断开",
+    "connectFailed": "无法连接到 {{name}}"
+  },
+  "remoteSession": {
+    "operatingOn": "正在操作",
+    "switchToLocal": "切换到本机",
+    "lost": "与 {{name}} 的连接已断开。",
+    "reconnect": "重新连接",
+    "pickerUnavailable": "暂不支持在 {{name}} 上选择文件夹。",
+    "finderUnavailable": "无法在这台电脑上打开 {{name}} 的文件夹。",
+    "backupLocalTitle": "备份按机器分别进行。",
+    "backupLocalBody": "此页面管理这台电脑的备份。{{name}} 由它自己的 Skills Manager 备份到同一个仓库。"
   }
 }

@@ -16,7 +16,7 @@ const PROMPT_SETTING_KEY = "backup_first_run_prompt";
  */
 export function FirstRunRestoreDialog() {
   const { t } = useTranslation();
-  const { managedSkills, loading: skillsLoading, refreshManagedSkills, refreshPresets } = useApp();
+  const { managedSkills, loading: skillsLoading, refreshManagedSkills, refreshPresets, activeHost } = useApp();
   const [open, setOpen] = useState(false);
   const [checked, setChecked] = useState(false);
   const [url, setUrl] = useState("");
@@ -24,7 +24,8 @@ export function FirstRunRestoreDialog() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (skillsLoading || checked) return;
+    // The check is about this computer's library; a host's may be empty.
+    if (skillsLoading || checked || activeHost) return;
     setChecked(true);
     if (managedSkills.length > 0) return;
     void (async () => {
@@ -36,7 +37,7 @@ export function FirstRunRestoreDialog() {
       if (!status || status.is_repo) return;
       setOpen(true);
     })();
-  }, [skillsLoading, checked, managedSkills.length]);
+  }, [skillsLoading, checked, managedSkills.length, activeHost]);
 
   if (!open) return null;
 

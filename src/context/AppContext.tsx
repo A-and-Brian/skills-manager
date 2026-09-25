@@ -1,12 +1,22 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import type { AppUpdateInfo, ManagedSkill, Project, Preset, RemoteHost, ToolInfo } from "../lib/tauri";
+import type { AppUpdateInfo, HostSessionInfo, ManagedSkill, Project, Preset, RemoteHost, ToolInfo } from "../lib/tauri";
 import * as api from "../lib/tauri";
+import { getActiveHostId, setActiveHostId, trackHost } from "../lib/hostCall";
+import { listenOnActiveHost } from "../lib/hostEvents";
+import { getErrorMessage } from "../lib/error";
 import i18n from "../i18n";
 import { applyTextSize } from "../lib/textScale";
 import { settingsPath } from "../views/settings/categories";
 import { toast } from "sonner";
+
+/** The live link to the active remote host. */
+export interface HostSession {
+  info: HostSessionInfo;
+  /** Set when the link dropped; the next call or Reconnect connects again. */
+  lostMessage: string | null;
+}
 
 interface AppState {
   presets: Preset[];
@@ -18,6 +28,19 @@ interface AppState {
   managedSkills: ManagedSkill[];
   projects: Project[];
   remoteHosts: RemoteHost[];
+  /** The remote host the app operates on; null is this computer. Never
+   *  remembered across launches: the app always starts on this computer. */
+  activeHost: RemoteHost | null;
+  hostSession: HostSession | null;
+  /** The host a switch is connecting to, while it connects. */
+  connectingHostId: string | null;
+  /** Operate on `hostId`, or on this computer for null. Resolves false when
+   *  the host could not be reached; the app is then on this computer, or
+   *  still on the host with its link marked lost when reconnecting. */
+  switchHost: (hostId: string | null) => Promise<boolean>;
+  /** Start the active host's session again, e.g. so it picks up a new
+   *  library path. Resolves like `switchHost`. */
+  reconnectHost: () => Promise<boolean>;
   loading: boolean;
   appError: string | null;
   helpOpen: boolean;
@@ -44,6 +67,25 @@ interface AppState {
 const VIEWED_PRESET_LS_KEY = "skills-manager.viewedPresetId";
 const LEGACY_VIEWED_PRESET_LS_KEY = "skills-manager.viewedScenarioId";
 
+/** Preset ids belong to one machine's library, so each host keeps its own. */
+function readViewedPresetId(hostId: string | null): string | null {
+  try {
+    if (hostId) return localStorage.getItem(`${VIEWED_PRESET_LS_KEY}:${hostId}`);
+    return localStorage.getItem(VIEWED_PRESET_LS_KEY) || localStorage.getItem(LEGACY_VIEWED_PRESET_LS_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeViewedPresetId(id: string) {
+  const hostId = getActiveHostId();
+  try {
+    localStorage.setItem(hostId ? `${VIEWED_PRESET_LS_KEY}:${hostId}` : VIEWED_PRESET_LS_KEY, id);
+  } catch {
+    // localStorage may be unavailable; selection is still tracked in memory.
+  }
+}
+
 const AppContext = createContext<AppState | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -51,17 +93,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const APP_UPDATE_TOAST_ID = "app-update-available";
   const [presets, setPresets] = useState<Preset[]>([]);
   const [activePreset, setActivePreset] = useState<Preset | null>(null);
-  const [viewedPresetId, setViewedPresetIdState] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(VIEWED_PRESET_LS_KEY) || localStorage.getItem(LEGACY_VIEWED_PRESET_LS_KEY);
-    } catch {
-      return null;
-    }
-  });
+  const [viewedPresetId, setViewedPresetIdState] = useState<string | null>(() => readViewedPresetId(null));
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [managedSkills, setManagedSkills] = useState<ManagedSkill[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>([]);
+  const [activeHostId, setActiveHostIdState] = useState<string | null>(null);
+  const [hostSession, setHostSession] = useState<HostSession | null>(null);
+  const [connectingHostId, setConnectingHostId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [appError, setAppError] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -71,17 +110,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const appUpdateCheckedRef = useRef(false);
   const lastUpdateNotificationRef = useRef<string | null>(null);
   const lastActivePresetIdRef = useRef<string | null>(null);
+  const switchSeqRef = useRef(0);
 
   const setTranslatedError = useCallback((key: string) => {
     setAppError(i18n.t("common.loadFailed", { item: i18n.t(key) }));
   }, []);
 
   const refreshPresets = useCallback(async () => {
+    const onSameHost = trackHost();
     try {
       const [s, active] = await Promise.all([
         api.getPresets(),
         api.getActivePreset(),
       ]);
+      if (!onSameHost()) return;
       setPresets(s);
       setActivePreset(active);
       const previousActiveId = lastActivePresetIdRef.current;
@@ -96,38 +138,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (nextActiveId && previousActiveId !== null) {
           setViewedPresetIdState((current) => {
             if (current !== previousActiveId) return current;
-            try {
-              localStorage.setItem(VIEWED_PRESET_LS_KEY, nextActiveId);
-            } catch {
-              // localStorage may be unavailable; selection is still tracked in memory.
-            }
+            storeViewedPresetId(nextActiveId);
             return nextActiveId;
           });
         }
       }
       setAppError(null);
     } catch (e) {
+      if (!onSameHost()) return;
       console.error("Failed to load presets:", e);
       setTranslatedError("common.presets");
     }
   }, [setTranslatedError]);
 
   const refreshTools = useCallback(async () => {
+    const onSameHost = trackHost();
     try {
       const t = await api.getToolStatus();
+      if (!onSameHost()) return;
       setTools(t);
       setAppError(null);
     } catch (e) {
+      if (!onSameHost()) return;
       console.error("Failed to load tools:", e);
       setTranslatedError("common.agents");
     }
   }, [setTranslatedError]);
 
   const refreshProjects = useCallback(async () => {
+    const onSameHost = trackHost();
     try {
       const p = await api.getProjects();
+      if (!onSameHost()) return;
       setProjects(p);
     } catch (e) {
+      if (!onSameHost()) return;
       console.error("Failed to load projects:", e);
     }
   }, []);
@@ -141,11 +186,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshManagedSkills = useCallback(async () => {
+    const onSameHost = trackHost();
     try {
       const skills = await api.getManagedSkills();
+      if (!onSameHost()) return;
       setManagedSkills(skills);
       setAppError(null);
     } catch (e) {
+      if (!onSameHost()) return;
       console.error("Failed to load managed skills:", e);
       setTranslatedError("common.skills");
     }
@@ -161,11 +209,86 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setViewedPresetId = useCallback((id: string) => {
     setViewedPresetIdState(id);
-    try {
-      localStorage.setItem(VIEWED_PRESET_LS_KEY, id);
-    } catch {
-      // localStorage may be unavailable; selection is still tracked in memory.
-    }
+    storeViewedPresetId(id);
+  }, []);
+
+  /** Point every host-scoped call at `hostId` and drop the other machine's data. */
+  const enterHost = useCallback((hostId: string | null) => {
+    setActiveHostId(hostId);
+    setActiveHostIdState(hostId);
+    setViewedPresetIdState(readViewedPresetId(hostId));
+    lastActivePresetIdRef.current = null;
+    setPresets([]);
+    setActivePreset(null);
+    setTools([]);
+    setManagedSkills([]);
+    setProjects([]);
+    setDetailSkillId(null);
+    setAppError(null);
+  }, []);
+
+  const switchHost = useCallback(
+    async (hostId: string | null): Promise<boolean> => {
+      // Only the latest switch decides where the app ends up.
+      const seq = ++switchSeqRef.current;
+      const isLatest = () => switchSeqRef.current === seq;
+      const previous = getActiveHostId();
+      if (hostId === null) {
+        setConnectingHostId(null);
+        // Also abandons a connect in flight. This computer's data does not
+        // wait for the host's session to close.
+        api.remoteHostDisconnect().catch((e) => console.error("Failed to disconnect:", e));
+        if (previous === null) return true;
+        enterHost(null);
+        setHostSession(null);
+        await refreshAppData();
+        return true;
+      }
+      setConnectingHostId(hostId);
+      try {
+        const info = await api.remoteHostConnect(hostId);
+        if (!isLatest()) return false;
+        if (previous !== hostId) enterHost(hostId);
+        setHostSession({ info, lostMessage: null });
+        await refreshAppData();
+        return true;
+      } catch (e) {
+        if (!isLatest()) return false;
+        const message = getErrorMessage(e, i18n.t("common.error"));
+        const name = remoteHosts.find((h) => h.id === hostId)?.name ?? hostId;
+        if (previous === hostId) {
+          // Reconnecting: stay on the host with its link marked lost.
+          setHostSession((s) => s && { ...s, lostMessage: message });
+        } else if (previous !== null) {
+          // Connecting closed the previous host's session.
+          enterHost(null);
+          setHostSession(null);
+          await refreshAppData();
+        }
+        toast.error(i18n.t("hostSwitcher.connectFailed", { name }), {
+          description: message,
+          duration: 10000,
+          action: { label: i18n.t("common.retry"), onClick: () => void switchHost(hostId) },
+        });
+        return false;
+      } finally {
+        if (isLatest()) setConnectingHostId(null);
+      }
+    },
+    [enterHost, refreshAppData, remoteHosts]
+  );
+
+  const reconnectHost = useCallback(async () => {
+    const hostId = getActiveHostId();
+    if (hostId === null) return false;
+    await api.remoteHostDisconnect().catch((e) => console.error("Failed to disconnect:", e));
+    return switchHost(hostId);
+  }, [switchHost]);
+
+  // The app always starts on this computer (also after a webview reload,
+  // which leaves the previous page's session open).
+  useEffect(() => {
+    api.remoteHostDisconnect().catch((e) => console.error("Failed to disconnect:", e));
   }, []);
 
   const handleApplyPresetToDefault = useCallback(
@@ -191,11 +314,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (viewedPreset.id !== viewedPresetId) {
       // Persist the resolved fallback so subsequent reads are stable.
       setViewedPresetIdState(viewedPreset.id);
-      try {
-        localStorage.setItem(VIEWED_PRESET_LS_KEY, viewedPreset.id);
-      } catch {
-        // ignore
-      }
+      storeViewedPresetId(viewedPreset.id);
     }
   }, [viewedPreset, viewedPresetId]);
 
@@ -219,6 +338,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unlistenPromise = listen("tray-open-updates", () => {
+      // The tray checked this computer's skills.
+      void switchHost(null);
       setDetailSkillId(null);
       if (!window.location.pathname.endsWith("/my-skills")) {
         window.history.pushState(null, "", "/my-skills");
@@ -233,12 +354,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           console.error("Failed to unlisten tray-open-updates:", error);
         });
     };
-  }, []);
+  }, [switchHost]);
 
   useEffect(() => {
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const unlistenPromise = listen("app-files-changed", () => {
+    const unlistenPromise = listenOnActiveHost("app-files-changed", () => {
       if (refreshTimer) {
         clearTimeout(refreshTimer);
       }
@@ -260,6 +381,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
     };
   }, [refreshAppData]);
+
+  // The active host's link dropped (say so and offer Reconnect), or a call
+  // connected it again.
+  useEffect(() => {
+    type SessionState = { host_id: string; state: string; message?: string };
+    const unlistenPromise = listen<SessionState>("remote-session-state", ({ payload }) => {
+      if (payload.host_id !== getActiveHostId()) return;
+      const lostMessage = payload.state === "disconnected" ? payload.message ?? "" : null;
+      setHostSession((s) => s && { ...s, lostMessage });
+    });
+    return () => {
+      unlistenPromise
+        .then((unlisten) => unlisten())
+        .catch((error) => {
+          console.error("Failed to unlisten remote-session-state:", error);
+        });
+    };
+  }, []);
 
   const notifyUpdatableSkills = useCallback((skills: ManagedSkill[]) => {
     const updatable = skills
@@ -357,7 +496,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Check skill updates on startup (non-blocking, silent). When the user has
   // opted in via the Settings toggle, also apply any available updates.
   useEffect(() => {
-    if (loading || managedSkills.length === 0) return;
+    // The round is this computer's: a host runs its own from its own app.
+    if (loading || activeHostId !== null || managedSkills.length === 0) return;
     const hasGitSkills = managedSkills.some(
       (s) => s.source_type === "git" || s.source_type === "skillssh"
     );
@@ -369,12 +509,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       (async () => {
         try {
           await api.checkAllSkillUpdates(false);
+          // Switched to a host meanwhile: the calls below would reach it.
+          if (getActiveHostId() !== null) return;
           let skills = await api.getManagedSkills();
 
           const autoUpdate = await api
             .getSettings("auto_update_apply")
             .catch(() => null);
-          if (autoUpdate === "on") {
+          if (autoUpdate === "on" && getActiveHostId() === null) {
             const ids = skills
               .filter(
                 (s) =>
@@ -411,6 +553,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
           }
 
+          if (getActiveHostId() !== null) return;
           setManagedSkills(skills);
           notifyUpdatableSkills(skills);
           api.setSettings("auto_update_last_run_at", new Date().toISOString())
@@ -431,7 +574,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Refresh after a background auto-update round (Rust scheduler) or the
   // tray "check for updates" action finishes.
   useEffect(() => {
-    const unlistenPromise = listen("skills-auto-updated", async () => {
+    const unlistenPromise = listenOnActiveHost("skills-auto-updated", async () => {
       try {
         const skills = await api.getManagedSkills();
         setManagedSkills(skills);
@@ -459,6 +602,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         managedSkills,
         projects,
         remoteHosts,
+        activeHost: remoteHosts.find((host) => host.id === activeHostId) ?? null,
+        hostSession,
+        connectingHostId,
+        switchHost,
+        reconnectHost,
         loading,
         appError,
         helpOpen,

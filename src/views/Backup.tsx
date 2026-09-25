@@ -28,6 +28,7 @@ import { ToggleSwitch } from "../components/ToggleSwitch";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { GitRecoveryDialog } from "../components/GitRecoveryDialog";
 import { GitSetupDialog } from "../components/GitSetupDialog";
+import { LocalBackupNotice } from "../components/LocalBackupNotice";
 import { useApp } from "../context/AppContext";
 import { getErrorKind, getErrorMessage } from "../lib/error";
 import { mapGitErrorMessage } from "../lib/gitErrors";
@@ -776,6 +777,8 @@ export function Backup() {
           {t("settings.refresh")}
         </button>
       </div>
+
+      <LocalBackupNotice />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-4">
