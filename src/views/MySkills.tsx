@@ -48,6 +48,7 @@ import { AgentIcon } from "../components/AgentIcon";
 import { LibraryFilterChips, LibraryFilterPopover, type FilterCategory } from "../components/LibraryFilters";
 import * as api from "../lib/tauri";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
+import { replaceTagInFilters, tagSuggestions } from "../lib/tagFilter";
 import {
   filterLibrarySkills,
   groupLibrarySkills,
@@ -306,7 +307,6 @@ export function MySkills() {
     search: search.toLowerCase(),
     sources: sourceFilters,
     tags: tagFilters,
-    untaggedSentinel: UNTAGGED_FILTER,
     agents: agentFilters,
     creators: creatorFilters,
     updates: updateFilters,
@@ -933,17 +933,6 @@ export function MySkills() {
     }
   };
 
-  // Replace `oldTag` with `newTag` in the active filter set so the current
-  // filtering survives a rename/delete.
-  const replaceTagInFilters = (oldTag: string, newTag?: string) =>
-    setTagFilters((prev) => {
-      if (!prev.has(oldTag)) return prev;
-      const next = new Set(prev);
-      next.delete(oldTag);
-      if (newTag) next.add(newTag);
-      return next;
-    });
-
   // Throws on failure so the rename dialog stays open (it only closes after a
   // resolved onRename), matching how RenamePresetDialog behaves.
   const handleRenameTag = async (newName: string) => {
@@ -953,7 +942,7 @@ export function MySkills() {
     if (!trimmed || trimmed === oldName) return;
     try {
       await api.renameTag(oldName, trimmed);
-      replaceTagInFilters(oldName, trimmed);
+      setTagFilters((prev) => replaceTagInFilters(prev, oldName, trimmed));
       toast.success(t("mySkills.tags.tagRenamed"));
       await refreshManagedSkills();
     } catch (error: unknown) {
@@ -967,7 +956,7 @@ export function MySkills() {
     if (tag === null) return;
     try {
       await api.deleteTag(tag);
-      replaceTagInFilters(tag);
+      setTagFilters((prev) => replaceTagInFilters(prev, tag));
       toast.success(t("mySkills.tags.tagDeleted"));
       await refreshManagedSkills();
     } catch (error: unknown) {
@@ -975,14 +964,7 @@ export function MySkills() {
     }
   };
 
-  const getTagOptions = (skill: ManagedSkill, keyword: string) => {
-    const needle = keyword.trim().toLowerCase();
-    return allTags.filter((tag) => {
-      if (skill.tags.includes(tag)) return false;
-      if (!needle) return true;
-      return tag.toLowerCase().includes(needle);
-    });
-  };
+  const getTagOptions = (skill: ManagedSkill, keyword: string) => tagSuggestions(allTags, skill.tags, keyword);
 
   const getGitStatusMeta = (mode: GitBackupMode) => {
     if (mode === "loading") {

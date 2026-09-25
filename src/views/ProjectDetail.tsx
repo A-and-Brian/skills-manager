@@ -39,6 +39,7 @@ import { PresetBar } from "../components/PresetBar";
 import { SkillMarkdown } from "../components/SkillMarkdown";
 import { DocumentDiffViewer } from "../components/DocumentDiffViewer";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
+import { matchesTagFilter } from "../lib/tagFilter";
 import { enabledInstalledAgentKeys, getDefaultExportAgents } from "../lib/exportAgents";
 import { groupProjectSkills, type ProjectSkillGroup } from "../lib/projectSkillGroups";
 import { copyCreator, type SkillCreator } from "../lib/skillCreator";
@@ -228,12 +229,7 @@ export function ProjectDetail() {
         skill.name.toLowerCase().includes(search.toLowerCase()) ||
         (skill.description || "").toLowerCase().includes(search.toLowerCase());
       if (!matchesSearch) return false;
-      if (tagFilters.size > 0) {
-        const wantUntagged = tagFilters.has(UNTAGGED_FILTER);
-        const matchUntagged = wantUntagged && skill.tags.length === 0;
-        const matchTag = skill.tags.some((tag) => tagFilters.has(tag));
-        if (!matchUntagged && !matchTag) return false;
-      }
+      if (!matchesTagFilter(skill.tags, tagFilters)) return false;
       if (filterMode === "enabled") return skill.enabledCount > 0;
       if (filterMode === "disabled") return skill.enabledCount === 0;
       return true;

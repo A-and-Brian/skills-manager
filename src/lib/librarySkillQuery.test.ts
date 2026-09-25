@@ -12,8 +12,7 @@ import {
   type LibraryQuery,
 } from "./librarySkillQuery";
 import { LOCAL_CREATOR } from "./skillCreator";
-
-const UNTAGGED = "__untagged_filter__";
+import { UNTAGGED_FILTER } from "./skillTags";
 
 function skill(overrides: Partial<ManagedSkill> & { id: string }): ManagedSkill {
   return {
@@ -51,7 +50,6 @@ function query(overrides: Partial<LibraryQuery> = {}): LibraryQuery {
     search: "",
     sources: new Set(),
     tags: new Set(),
-    untaggedSentinel: UNTAGGED,
     agents: new Set(),
     creators: new Set(),
     updates: new Set(),
@@ -93,7 +91,7 @@ describe("filterLibrarySkills", () => {
 
   it("keeps the untagged sentinel working alongside real tags", () => {
     const all = [docx, pdf, notes];
-    expect(filterLibrarySkills(all, query({ tags: new Set([UNTAGGED, "office"]) }), displayName).map((s) => s.id)).toEqual(["docx", "notes"]);
+    expect(filterLibrarySkills(all, query({ tags: new Set([UNTAGGED_FILTER, "office"]) }), displayName).map((s) => s.id)).toEqual(["docx", "notes"]);
   });
 
   it("filters by creator: GitHub owner, frontmatter author or local", () => {
@@ -196,7 +194,7 @@ describe("libraryFilterCounts", () => {
 
   it("counts untagged and undeployed skills under their sentinels", () => {
     const result = counts(all);
-    expect(result.tags.get(UNTAGGED)).toBe(1);
+    expect(result.tags.get(UNTAGGED_FILTER)).toBe(1);
     expect(result.agents.get(NOT_DEPLOYED)).toBe(1);
   });
 
