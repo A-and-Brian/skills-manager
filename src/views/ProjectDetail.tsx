@@ -6,16 +6,12 @@ import {
   LayoutGrid,
   List,
   RefreshCw,
-  FileText,
   Download,
   Upload,
-  RotateCcw,
   Layers,
   X,
-  Loader2,
   Trash2,
   SquareCheck,
-  Square,
   Plus,
   CircleSlash,
   CheckCircle2,
@@ -30,11 +26,11 @@ import { useMultiSelect } from "../hooks/useMultiSelect";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { MultiSelectToolbar } from "../components/MultiSelectToolbar";
 import { BatchTagDialog } from "../components/BatchTagDialog";
-import { ToggleSwitch } from "../components/ToggleSwitch";
-import { ProjectAgentDots } from "../components/ProjectAgentDots";
-import { CreatorBadge } from "../components/CreatorBadge";
 import { PresetBar } from "../components/PresetBar";
 import { ProjectSkillDetailPanel } from "../components/ProjectSkillDetailPanel";
+import { ProjectSkillCard } from "../components/ProjectSkillCard";
+import { ProjectSkillRow } from "../components/ProjectSkillRow";
+import type { ProjectSkillItemProps } from "../components/projectSkillItem";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
 import { enabledInstalledAgentKeys, getDefaultExportAgents } from "../lib/exportAgents";
 import {
@@ -56,36 +52,6 @@ import { AddSkillsSheet } from "../components/AddSkillsSheet";
 import { ProjectAgentsDialog } from "../components/ProjectAgentsDialog";
 const projectLastUsedAgentsKey = (projectId: string) =>
   `project_last_used_export_agents:${projectId}`;
-
-function getSyncStatusMeta(t: (key: string) => string, status: ProjectSkill["sync_status"]) {
-  switch (status) {
-    case "in_sync":
-      return {
-        label: t("project.syncStatus.inSync"),
-        className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-      };
-    case "project_newer":
-      return {
-        label: t("project.syncStatus.projectNewer"),
-        className: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-      };
-    case "center_newer":
-      return {
-        label: t("project.syncStatus.centerNewer"),
-        className: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
-      };
-    case "diverged":
-      return {
-        label: t("project.syncStatus.diverged"),
-        className: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
-      };
-    default:
-      return {
-        label: t("project.syncStatus.projectOnly"),
-        className: "bg-surface-hover text-muted",
-      };
-  }
-}
 
 export function ProjectDetail() {
   const { id } = useParams({ from: "/project/$id" });
@@ -1152,324 +1118,35 @@ export function ProjectDetail() {
         >
           {filtered.map((skill) => {
             const skillKey = getSkillKey(skill);
-            const isSelected = selectedIds.has(skillKey);
-            const isUpdatingCenter = updatingCenterSkill === skillKey;
-            const isUpdatingProject = updatingProjectSkill === skillKey;
-            const isToggling = togglingSkill === skillKey;
-            const canUpdateCenter = isCenterUpdatable(skill.status);
-            const canUpdateProject = isProjectUpdatable(skill.status);
-            const statusMeta = getSyncStatusMeta(t, skill.status);
-            const assignedAgents = getAssignedAgents(skill.variants);
-            const creator = creatorOf(skill);
+            const itemProps: ProjectSkillItemProps = {
+              skill,
+              creator: creatorOf(skill),
+              allTags,
+              targets: exportTargets,
+              supportsSkillToggle: project.supports_skill_toggle,
+              isMultiSelect,
+              isSelected: selectedIds.has(skillKey),
+              isUpdatingCenter: updatingCenterSkill === skillKey,
+              isUpdatingProject: updatingProjectSkill === skillKey,
+              isToggling: togglingSkill === skillKey,
+              pendingAgent:
+                togglingAgentTarget?.skillKey === skillKey
+                  ? togglingAgentTarget.agent
+                  : null,
+              vendoredLock: vendoredLockOf(skill),
+              onToggleSelect: toggleSelect,
+              onOpenDetail: handleOpenDetail,
+              onToggleAgent: handleToggleDetailAgent,
+              onUpdateCenter: handleUpdateCenter,
+              onUpdateProject: handleUpdateProject,
+              onToggleSkill: handleToggleSkill,
+              onDelete: setDeleteTarget,
+            };
 
-            if (viewMode === "grid") {
-              return (
-                <div
-                  key={skillKey}
-                  className={cn(
-                    "app-panel group relative flex h-full cursor-pointer flex-col overflow-hidden shadow-card transition-all hover:-translate-y-px hover:border-border hover:shadow-card-hover",
-                    isMultiSelect && isSelected && "ring-1 ring-accent border-accent/40"
-                  )}
-                  onClick={() =>
-                    isMultiSelect ? toggleSelect(skillKey) : handleOpenDetail(skill)
-                  }
-                >
-                  <div className="flex items-center gap-2.5 px-3.5 pt-3 pb-1.5">
-                    {/* Fixed slot: status dot, or the checkbox in multi-select */}
-                    <div className="flex h-4 w-4 shrink-0 items-center justify-center">
-                      {isMultiSelect ? (
-                        isSelected
-                          ? <SquareCheck className="h-3.5 w-3.5 text-accent" />
-                          : <Square className="h-3.5 w-3.5 text-faint" />
-                      ) : (
-                        <span
-                          className={cn(
-                            "h-2 w-2 rounded-full",
-                            skill.enabledCount === skill.totalCount
-                              ? "bg-accent-light shadow-[0_0_0_3px_var(--color-accent-bg)]"
-                              : skill.enabledCount > 0
-                                ? "bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.15)]"
-                                : "bg-surface-active"
-                          )}
-                          title={`${skill.enabledCount}/${skill.totalCount}`}
-                        />
-                      )}
-                    </div>
-                    <h3
-                      className="flex-1 truncate text-[14px] font-semibold text-primary"
-                      title={skill.name}
-                    >
-                      {skill.name}
-                    </h3>
-                    {skill.files.length > 0 && (
-                      <span className="flex items-center gap-1 text-[12px] text-faint shrink-0">
-                        <FileText className="w-3 h-3" />
-                        {skill.files.length}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="px-3.5 pb-3">
-                    <p className="text-[13px] leading-[18px] text-muted truncate">
-                      {skill.description || "\u2014"}
-                    </p>
-                    {skill.tags.length > 0 && (
-                      <div className="mt-2 flex flex-wrap items-center gap-1">
-                        {skill.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className={cn(
-                              "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-                              getTagColor(tag, allTags)
-                            )}
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-auto flex items-center justify-between gap-2 border-t border-border-faint px-3.5 py-2.5">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <span className={cn("rounded-full px-2 py-0.5 text-[12px] font-medium", statusMeta.className)}>
-                        {statusMeta.label}
-                      </span>
-                      {skill.enabledCount === 0 && (
-                        <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[12px] font-medium text-red-600 dark:text-red-300">
-                          {t("project.disabled")}
-                        </span>
-                      )}
-                      <CreatorBadge creator={creator} hideLocal />
-                    </div>
-                    {!isMultiSelect && (
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <ProjectAgentDots
-                          assignedAgents={assignedAgents}
-                          targets={exportTargets}
-                          limit={4}
-                          size="sm"
-                          onToggle={(agentKey, enabled) => handleToggleDetailAgent(skill, agentKey, enabled)}
-                          locked={vendoredLockOf(skill)}
-                          pendingKey={
-                            togglingAgentTarget?.skillKey === skillKey
-                              ? togglingAgentTarget.agent
-                              : null
-                          }
-                        />
-                        {canUpdateCenter && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleUpdateCenter(skill); }}
-                            disabled={isUpdatingCenter || isUpdatingProject}
-                            className="rounded px-2 py-1 text-[13px] font-medium text-muted transition-colors outline-none hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
-                            title={t("project.updateCenter")}
-                          >
-                            {isUpdatingCenter ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Upload className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        )}
-                        {canUpdateProject && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleUpdateProject(skill); }}
-                            disabled={isUpdatingCenter || isUpdatingProject}
-                            className="rounded px-2 py-1 text-[13px] font-medium text-muted transition-colors outline-none hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
-                            title={
-                              skill.status === "project_newer"
-                                ? t("project.resetFromCenter")
-                                : t("project.updateProject")
-                            }
-                          >
-                            {isUpdatingProject ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : skill.status === "project_newer" ? (
-                              <RotateCcw className="h-3.5 w-3.5" />
-                            ) : (
-                              <Download className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        )}
-                        {project.supports_skill_toggle ? (
-                          <ToggleSwitch
-                            checked={skill.enabledCount === skill.totalCount}
-                            loading={isToggling}
-                            onChange={() => handleToggleSkill(skill)}
-                            title={
-                              skill.enabledCount === skill.totalCount
-                                ? t("project.enabled")
-                                : t("project.enableSkill")
-                            }
-                          />
-                        ) : null}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(skill); }}
-                          className="rounded px-2 py-1 text-muted transition-colors outline-none hover:bg-red-500/10 hover:text-red-500"
-                          title={t("project.deleteSkill")}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            }
-
-            // List view
-            return (
-              <div
-                key={skillKey}
-                className={cn(
-                  "app-panel group flex cursor-pointer items-center gap-3.5 rounded-xl border-transparent px-3.5 py-3 transition-all hover:border-border hover:bg-surface-hover",
-                  isMultiSelect && isSelected && "ring-1 ring-accent border-accent/40"
-                )}
-                onClick={() =>
-                  isMultiSelect ? toggleSelect(skillKey) : handleOpenDetail(skill)
-                }
-              >
-                <div className="flex h-4 w-4 shrink-0 items-center justify-center">
-                  {isMultiSelect ? (
-                    isSelected
-                      ? <SquareCheck className="h-3.5 w-3.5 text-accent" />
-                      : <Square className="h-3.5 w-3.5 text-faint" />
-                  ) : (
-                    <span
-                      className={cn(
-                        "h-2 w-2 shrink-0 rounded-full",
-                        skill.enabledCount === skill.totalCount
-                          ? "bg-accent-light shadow-[0_0_0_3px_var(--color-accent-bg)]"
-                          : skill.enabledCount > 0
-                            ? "bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.15)]"
-                            : "bg-surface-active"
-                      )}
-                      title={`${skill.enabledCount}/${skill.totalCount}`}
-                    />
-                  )}
-                </div>
-                <h3
-                  className="w-[180px] shrink-0 truncate text-[14px] font-semibold text-secondary"
-                  title={skill.name}
-                >
-                  {skill.name}
-                </h3>
-
-                <p className="min-w-0 flex-1 truncate text-[13px] text-muted">
-                  {skill.description || "\u2014"}
-                </p>
-
-                {skill.tags.length > 0 && (
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {skill.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className={cn(
-                          "inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium",
-                          getTagColor(tag, allTags)
-                        )}
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex shrink-0 items-center gap-2.5">
-                  <CreatorBadge creator={creator} size="md" hideLocal className="max-w-[160px]" />
-                  <span className={cn("rounded-full px-2 py-0.5 text-[12px] font-medium", statusMeta.className)}>
-                    {statusMeta.label}
-                  </span>
-                  {skill.enabledCount === 0 && (
-                    <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[12px] font-medium text-red-600 dark:text-red-300">
-                      {t("project.disabled")}
-                    </span>
-                  )}
-                  {skill.files.length > 0 && (
-                    <span className="flex items-center gap-1 text-[12px] text-faint">
-                      <FileText className="w-3 h-3" />
-                      {skill.files.length}
-                    </span>
-                  )}
-                  <ProjectAgentDots
-                    assignedAgents={assignedAgents}
-                    targets={exportTargets}
-                    limit={4}
-                    size="sm"
-                    onToggle={
-                      isMultiSelect
-                        ? undefined
-                        : (agentKey, enabled) => handleToggleDetailAgent(skill, agentKey, enabled)
-                    }
-                    locked={vendoredLockOf(skill)}
-                    pendingKey={
-                      togglingAgentTarget?.skillKey === skillKey
-                        ? togglingAgentTarget.agent
-                        : null
-                    }
-                  />
-                </div>
-
-                {!isMultiSelect && (
-                  <>
-                    <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      {canUpdateCenter && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleUpdateCenter(skill); }}
-                          disabled={isUpdatingCenter || isUpdatingProject}
-                          className="rounded p-0.5 text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
-                          title={t("project.updateCenter")}
-                        >
-                          {isUpdatingCenter ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Upload className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      )}
-                      {canUpdateProject && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleUpdateProject(skill); }}
-                          disabled={isUpdatingCenter || isUpdatingProject}
-                          className="rounded p-0.5 text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
-                          title={
-                            skill.status === "project_newer"
-                              ? t("project.resetFromCenter")
-                              : t("project.updateProject")
-                          }
-                        >
-                          {isUpdatingProject ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : skill.status === "project_newer" ? (
-                            <RotateCcw className="h-3.5 w-3.5" />
-                          ) : (
-                            <Download className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      )}
-                    </div>
-                    {project.supports_skill_toggle ? (
-                      <ToggleSwitch
-                        checked={skill.enabledCount === skill.totalCount}
-                        loading={isToggling}
-                        onChange={() => handleToggleSkill(skill)}
-                        title={
-                          skill.enabledCount === skill.totalCount
-                            ? t("project.enabled")
-                            : t("project.enableSkill")
-                        }
-                      />
-                    ) : null}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(skill); }}
-                      className="shrink-0 rounded p-0.5 text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
-                      title={t("project.deleteSkill")}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </>
-                )}
-              </div>
+            return viewMode === "grid" ? (
+              <ProjectSkillCard key={skillKey} {...itemProps} />
+            ) : (
+              <ProjectSkillRow key={skillKey} {...itemProps} />
             );
           })}
         </div>
