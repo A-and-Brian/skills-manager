@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context};
-use app_lib::commands::{presets as preset_cmd, tools as tool_cmd};
+use app_lib::commands::presets as preset_cmd;
 use app_lib::core::{
     app_state, audit_log::AuditDraft, central_repo, git_fetcher, installer, repo_lock::RepoLock,
     scenario_service, serve, skill_delete, skill_install, skill_metadata, skill_source,
@@ -26,11 +26,13 @@ use crate::reports::{
     SkillDeploymentReport, SkillDetail, SkillStatusReport, SkillSummary, SyncReport, TagReport,
     UpdateReport,
 };
+use crate::tools::run_tools;
 
 mod args;
 mod output;
 mod repo;
 mod reports;
+mod tools;
 
 #[derive(Parser, Debug)]
 #[command(name = "skills-manager-cli")]
@@ -139,66 +141,6 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         // stdout carries the protocol; nothing else may print there.
         Commands::Serve(_) => Ok(serve::serve_stdio(store)?),
     }
-}
-
-// ── tools ─────────────────────────────────────────────────────────────────
-
-fn run_tools(args: ToolsArgs, store: &SkillStore, json: bool) -> anyhow::Result<()> {
-    match args.command {
-        ToolsCommand::List => print_json(&tool_service::list_tool_info(store), json),
-        ToolsCommand::Enable { agents } => {
-            print_json(&run_set_agents_enabled(store, &agents, true)?, json)
-        }
-        ToolsCommand::Disable { agents } => {
-            print_json(&run_set_agents_enabled(store, &agents, false)?, json)
-        }
-    }
-    Ok(())
-}
-
-fn run_set_agents_enabled(
-    store: &SkillStore,
-    agents: &[String],
-    enabled: bool,
-) -> anyhow::Result<Vec<AgentMutationReport>> {
-    if agents.is_empty() {
-        bail!("no agent key provided");
-    }
-    let infos = tool_service::list_tool_info(store);
-    let mut resolved = Vec::new();
-    for key in agents {
-        let info = infos
-            .iter()
-            .find(|info| info.key == *key)
-            .ok_or_else(|| anyhow!("unknown agent: {key}"))?;
-        if !resolved
-            .iter()
-            .any(|existing: &String| existing == &info.key)
-        {
-            resolved.push(info.key.clone());
-        }
-    }
-
-    let mut reports = Vec::new();
-    for key in resolved {
-        let before = infos.iter().find(|info| info.key == key).unwrap().enabled;
-        tool_cmd::set_tool_enabled_internal(store, &key, enabled).map_err(map_app_err)?;
-        store.log_audit(
-            AuditDraft::new(if enabled {
-                "enable_agent"
-            } else {
-                "disable_agent"
-            })
-            .tool(key.clone())
-            .ok(),
-        );
-        reports.push(AgentMutationReport {
-            agent: key,
-            enabled,
-            changed: before != enabled,
-        });
-    }
-    Ok(reports)
 }
 
 // ── skills ────────────────────────────────────────────────────────────────
