@@ -1,0 +1,78 @@
+name: Version
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  # `gh workflow run release.yml` below.
+  actions: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    name: Version PR or release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # The release step compares against the previous commit.
+          fetch-depth: 2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # While changesets are pending on main, open or update the
+      # "chore: version packages" PR that bumps every version file and writes
+      # CHANGELOG.md. Merging that PR is how a release is cut.
+      - name: Open or update the version PR
+        id: changesets
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          version-script: npm run changeset:version
+          commit-message: "chore: version packages"
+          pr-title: "chore: version packages"
+          # release.yml owns tags and GitHub releases.
+          create-github-releases: false
+          push-git-tags: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag only on the push that changed package.json's version, i.e. the
+      # version PR merging, so an ordinary push never cuts a release. A tag
+      # pushed with GITHUB_TOKEN does not trigger other workflows, so the
+      # release build is dispatched explicitly against the new tag.
+      - name: Tag and start the release
+        if: steps.changesets.outputs.has-changesets == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          PREV_VERSION=$(git show HEAD~1:package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+          if [ "$VERSION" = "$PREV_VERSION" ]; then
+            echo "Version unchanged at ${VERSION}; nothing to release."
+            exit 0
+          fi
+          TAG="v${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
+            echo "${TAG} already exists; not releasing again."
+            exit 0
+          fi
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh workflow run release.yml --ref "$TAG"
+          echo "Tagged ${TAG} and started the release build."

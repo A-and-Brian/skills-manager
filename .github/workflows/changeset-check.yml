@@ -1,0 +1,41 @@
+name: Changeset
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changeset:
+    # The version PR consumes changesets rather than adding one.
+    if: github.head_ref != 'changeset-release/main'
+    runs-on: ubuntu-latest
+    name: Changeset present
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # `changeset status --since` diffs against the base branch.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Only changes matching `changedFilePatterns` in .changeset/config.json
+      # need a changeset, so docs- and CI-only PRs pass without one. For an app
+      # change that should not appear in the changelog, run
+      # `npx changeset add --empty`.
+      - name: Check for a changeset
+        run: npx changeset status --since=origin/${{ github.base_ref }}

@@ -3,7 +3,6 @@ import {
   RefreshCw,
   Settings2,
   Github,
-  Globe,
   Loader2,
   ExternalLink,
   BookOpen,
@@ -31,8 +30,6 @@ const IS_MACOS = navigator.userAgent.includes("Mac");
 const CAN_INSTALL_IN_APP = IS_WINDOWS || IS_MACOS;
 
 const RESTART_TOAST_ID = "app-update-restart";
-
-const WEBSITE_URL = "https://skillsmanager.dev";
 
 interface AboutSectionProps {
   reportingIssue: boolean;
@@ -243,13 +240,6 @@ export function AboutSection({ reportingIssue, onReportIssue }: AboutSectionProp
               <FileArchive className="w-3 h-3" />
             )}
             {t("settings.exportLogs")}
-          </button>
-          <button
-            type="button"
-            onClick={() => { openUrl(WEBSITE_URL).catch(() => {}); }}
-            className={`${ACTION_BUTTON_CLASS} bg-surface-hover hover:bg-surface-active text-tertiary border-border`}
-          >
-            <Globe className="w-3 h-3" /> {t("settings.website")}
           </button>
           <button
             type="button"

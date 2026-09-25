@@ -9,29 +9,7 @@
 </p>
 
 <p align="center">
-  <strong><a href="https://skillsmanager.dev">skillsmanager.dev</a></strong>
-</p>
-
-<p align="center">
-  🎬 <a href="https://www.youtube.com/watch?v=wfbCrfNASVU">Video intro (YouTube)</a>
-  &nbsp;·&nbsp;
-  <a href="https://www.bilibili.com/video/BV1845F6REUu/">视频介绍 (Bilibili)</a>
-</p>
-
-<p align="center">
-  <a href="./README.zh-CN.md">中文说明</a>
-  &nbsp;·&nbsp;
-  <a href="https://x.com/JayTL00">@JayTL00 on X</a>
-  &nbsp;·&nbsp;
-  <a href="https://buymeacoffee.com/jaytl">Buy me a coffee</a>
-</p>
-
-<p align="center">
-  <a href="https://trendshift.io/repositories/23290?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-23290" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/23290" alt="xingkongliang%2Fskills-manager | Trendshift" width="250" height="55"/></a>
-</p>
-
-<p align="center">
-  <a href="https://skills.sh/xingkongliang/skills-manager"><img src="https://skills.sh/b/xingkongliang/skills-manager" alt="manage-skills on skills.sh" /></a>
+  Forked from <a href="https://github.com/xingkongliang/skills-manager">xingkongliang/skills-manager</a> — thanks to its author and contributors for the original work.
 </p>
 
 <p align="center">
@@ -85,17 +63,11 @@
 
 ### macOS
 
-Install with [Homebrew](https://brew.sh):
-
-```bash
-brew install --cask skills-manager
-```
-
-You can also download the `.dmg` for your Mac from the [latest release](https://github.com/xingkongliang/skills-manager/releases/latest).
+Download the `.dmg` for your Mac from the [latest release](https://github.com/A-and-Brian/skills-manager/releases/latest).
 
 ### Windows and Linux
 
-Download the installer for your platform from the [latest release](https://github.com/xingkongliang/skills-manager/releases/latest): `.exe` or `.msi` for Windows, and `.AppImage`, `.deb`, or `.rpm` for Linux (x64 and arm64).
+Download the installer for your platform from the [latest release](https://github.com/A-and-Brian/skills-manager/releases/latest): `.exe` or `.msi` for Windows, and `.AppImage`, `.deb`, or `.rpm` for Linux (x64 and arm64).
 
 Every installer ships the CLI inside the app — see [Where the binary lives](#where-the-binary-lives).
 
@@ -105,7 +77,7 @@ Every installer ships the CLI inside the app — see [Where the binary lives](#w
 2. Open **Global Workspace** from the sidebar and pick an agent (e.g. Claude Code).
 3. Click a **Preset** pill to activate its skills for that agent, or use **+ Add Skills** to pick from your library and toggle target agents inline. Active presets show a ✓; partial installs show a count badge.
 4. To manage project-local skills, open a **Project Workspace** and use the same preset pills or the **+ Add Skills** picker with its multi-agent target selector.
-5. Configure agent paths, custom tools, theme, language, proxy, and Git preferences in **Settings**.
+5. Configure agent paths, custom tools, theme, proxy, and Git preferences in **Settings**.
 6. If you want history or multi-machine sync, open **Backup** in the sidebar and click **Sign in with GitHub** — backup and cross-device sync run automatically from then on.
 
 ## Let your agents manage skills
@@ -117,7 +89,7 @@ The Dashboard offers a one-time setup: pick the agents that should be able to do
 It is also an ordinary published skill, so it can be installed without the app:
 
 ```bash
-npx skills add xingkongliang/skills-manager
+npx skills add A-and-Brian/skills-manager
 ```
 
 ## Backup & Multi-Device Sync
@@ -248,19 +220,26 @@ npm run tauri:build
 npm run cli:build
 ```
 
+### Changesets and releases
+
+Every PR that changes the app (`src/`, `src-tauri/`, `skills/` and similar) needs a changeset, which the **Changeset** check enforces:
+
+```bash
+npx changeset          # pick patch/minor/major and describe the change
+npx changeset --empty  # an app change that doesn't need a changelog entry
+```
+
+Changes to docs and CI don't need one.
+
+Once changesets land on `main`, the **Version** workflow opens a `chore: version packages` PR. That PR bumps every version file and writes `CHANGELOG.md`. Merging it tags `vX.Y.Z` and starts the **Build & Release** workflow.
+
 ## Troubleshooting
 
-**macOS refuses to open the app.** Releases from **v1.29.0** onward are signed with an Apple Developer ID certificate and notarized, so they open normally. If you see "Apple could not verify…" or "App is damaged", you are on v1.28.5 or older — upgrading is the fix. (Upgrading changes the code signature, so macOS may ask once more for the `skills-manager-git-backup` keychain entry; click **Always Allow**.)
+[Open an issue](https://github.com/A-and-Brian/skills-manager/issues), and attach the bundle from **Settings → Export Logs**.
 
-Anything else — [open an issue](https://github.com/xingkongliang/skills-manager/issues), and attach the bundle from **Settings → Export Logs**.
+## Credits
 
-## Star History
-
-<p align="center">
-  <a href="https://github.com/xingkongliang/star-history-svg">
-    <img src="assets/star-history.svg" width="800" alt="Star History chart for xingkongliang/skills-manager" />
-  </a>
-</p>
+Skills Manager began as a fork of [xingkongliang/skills-manager](https://github.com/xingkongliang/skills-manager). Most of the app — and the history in [CHANGELOG.md](CHANGELOG.md) up to 1.40.0 — is their work.
 
 ## License
 
