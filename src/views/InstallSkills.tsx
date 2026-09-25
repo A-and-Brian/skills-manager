@@ -28,7 +28,7 @@ import { toast } from "sonner";
 import { cn } from "../utils";
 import { useApp } from "../context/AppContext";
 import * as api from "../lib/tauri";
-import type { ScanResult, SkillsShSkill, BatchImportResult } from "../lib/tauri";
+import type { SkillsShSkill, BatchImportResult } from "../lib/tauri";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { InstallTab } from "./installSearch";
@@ -38,6 +38,7 @@ import { filterMarketSkills, paginateMarketSkills } from "../lib/marketSearch";
 import { MARKET_SEARCH_STEP, useMarketSearch } from "../hooks/useMarketSearch";
 import { useSourceOverflow } from "../hooks/useSourceOverflow";
 import { useGitPreview } from "../hooks/useGitPreview";
+import { useLocalScan } from "../hooks/useLocalScan";
 import { findInstalledByGitUrl as findInstalledSkillByGitUrl } from "../lib/gitUrl";
 import { StatusBanner } from "../components/StatusBanner";
 import { getErrorMessage, getErrorKind } from "../lib/error";
@@ -83,9 +84,14 @@ export function InstallSkills() {
     handleGitPreviewClose,
     handleGitConfirm,
   } = useGitPreview();
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const [scanLoading, setScanLoading] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const {
+    scanResult,
+    scanLoading,
+    localError,
+    setLocalError,
+    runScan,
+    runScanSilent,
+  } = useLocalScan(activeTab === "local");
   const [importingPaths, setImportingPaths] = useState<Set<string>>(new Set());
   const [importingAll, setImportingAll] = useState(false);
   const [renameEditing, setRenameEditing] = useState<Record<string, string>>({});
@@ -152,47 +158,11 @@ export function InstallSkills() {
     navigate({ to: "/install", search: { tab } });
   };
 
-  const runScan = useCallback(async () => {
-    setScanLoading(true);
-    setLocalError(null);
-    try {
-      const result = await api.scanLocalSkills();
-      setScanResult(result);
-    } catch (error: unknown) {
-      console.error(error);
-      const message = getErrorMessage(error, t("common.error"));
-      setLocalError(message);
-      toast.error(message);
-    } finally {
-      setScanLoading(false);
-    }
-  }, [t]);
-
-  // Silent variant used after install/import. Never surfaces a toast or
-  // new error state — failure here must not mask the install success.
-  // Clears any stale localError on success so successful operations don't
-  // leave previous error banners behind.
-  const runScanSilent = useCallback(async () => {
-    try {
-      const result = await api.scanLocalSkills();
-      setScanResult(result);
-      setLocalError(null);
-    } catch (error: unknown) {
-      console.warn("silent scan failed:", error);
-    }
-  }, []);
-
   const warnRejected = (results: PromiseSettledResult<unknown>[], label: string) => {
     for (const r of results) {
       if (r.status === "rejected") console.warn(`${label} failed:`, r.reason);
     }
   };
-
-  useEffect(() => {
-    if (activeTab === "local" && !scanResult && !scanLoading) {
-      runScan();
-    }
-  }, [activeTab, scanLoading, scanResult, runScan]);
 
   const installLocalSource = async (sourcePath: string) => {
     const name = sourcePath.split("/").pop() || sourcePath;
