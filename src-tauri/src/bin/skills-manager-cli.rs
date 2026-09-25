@@ -7,7 +7,8 @@ use app_lib::commands::{presets as preset_cmd, skills as cmd, tools as tool_cmd}
 use app_lib::core::{
     app_state, audit_log::AuditDraft, central_repo, error::AppError, git_backup, git_fetcher,
     installer, merge, repo_lock::RepoLock, scenario_service, serve, skill_metadata,
-    skill_store::SkillStore, skillssh_api, sync_engine, sync_metadata, tool_adapters, tool_service,
+    skill_store::SkillStore, skill_tags, skillssh_api, sync_engine, sync_metadata, tool_adapters,
+    tool_service,
 };
 use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
@@ -2290,7 +2291,7 @@ fn run_tag(args: TagArgs, store: &SkillStore, json: bool) -> anyhow::Result<()> 
                     current.push(tag.to_string());
                 }
             }
-            cmd::set_skill_tags_internal(store, &skill.id, &current).map_err(map_app_err)?;
+            skill_tags::set_skill_tags_internal(store, &skill.id, &current).map_err(map_app_err)?;
             print_json(
                 &TagReport {
                     skill_id: skill.id,
@@ -2308,7 +2309,7 @@ fn run_tag(args: TagArgs, store: &SkillStore, json: bool) -> anyhow::Result<()> 
                 .cloned()
                 .unwrap_or_default();
             current.retain(|c| !tags.iter().any(|t| t.trim() == c));
-            cmd::set_skill_tags_internal(store, &skill.id, &current).map_err(map_app_err)?;
+            skill_tags::set_skill_tags_internal(store, &skill.id, &current).map_err(map_app_err)?;
             print_json(
                 &TagReport {
                     skill_id: skill.id,
@@ -2320,7 +2321,7 @@ fn run_tag(args: TagArgs, store: &SkillStore, json: bool) -> anyhow::Result<()> 
         }
         TagCommand::Set { reference, tags } => {
             let skill = resolve_skill(store, &reference)?;
-            cmd::set_skill_tags_internal(store, &skill.id, &tags).map_err(map_app_err)?;
+            skill_tags::set_skill_tags_internal(store, &skill.id, &tags).map_err(map_app_err)?;
             let current = store
                 .get_tags_map()?
                 .get(&skill.id)
@@ -2338,8 +2339,8 @@ fn run_tag(args: TagArgs, store: &SkillStore, json: bool) -> anyhow::Result<()> 
         TagCommand::Rename { old_name, new_name } => {
             let old_name = old_name.trim().to_string();
             let new_name = new_name.trim().to_string();
-            let affected =
-                cmd::rename_tag_internal(store, &old_name, &new_name).map_err(map_app_err)?;
+            let affected = skill_tags::rename_tag_internal(store, &old_name, &new_name)
+                .map_err(map_app_err)?;
             print_json(
                 &GlobalTagReport {
                     ok: true,
@@ -2363,7 +2364,7 @@ fn run_tag(args: TagArgs, store: &SkillStore, json: bool) -> anyhow::Result<()> 
                 bail!("refusing to delete tag without --yes");
             }
             if !dry_run {
-                cmd::delete_tag_internal(store, &name).map_err(map_app_err)?;
+                skill_tags::delete_tag_internal(store, &name).map_err(map_app_err)?;
             }
             print_json(
                 &GlobalTagReport {
