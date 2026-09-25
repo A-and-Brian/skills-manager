@@ -29,11 +29,10 @@ import { cn } from "../utils";
 import { useApp } from "../context/AppContext";
 import * as api from "../lib/tauri";
 import type { ScanResult, SkillsShSkill, BatchImportResult, GitPreviewResult } from "../lib/tauri";
-import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { listenOnActiveHost } from "../lib/hostEvents";
-import { useRemotePickerBlock } from "../hooks/useRemotePickerBlock";
+import { pickPath } from "../lib/pickPath";
 import { StatusBanner } from "../components/StatusBanner";
 import { getErrorMessage, getErrorKind } from "../lib/error";
 
@@ -46,7 +45,6 @@ const MARKET_SEARCH_CACHE_MAX_ENTRIES = 150;
 export function InstallSkills() {
   const { t } = useTranslation();
   const { refreshPresets, refreshManagedSkills, managedSkills, openSkillDetailById } = useApp();
-  const pickerBlock = useRemotePickerBlock();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<"market" | "local" | "git">("market");
@@ -325,12 +323,9 @@ export function InstallSkills() {
 
   const handleLocalFolderInstall = async () => {
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-      });
+      const selected = await pickPath({ directory: true });
       if (!selected) return;
-      installLocalSource(selected as string);
+      installLocalSource(selected);
     } catch (error: unknown) {
       const message = getErrorMessage(error, t("common.error"));
       setLocalError(message);
@@ -340,12 +335,9 @@ export function InstallSkills() {
 
   const handleLocalFileInstall = async () => {
     try {
-      const selected = await open({
-        multiple: false,
-        filters: [{ name: "Skills", extensions: ["zip", "skill"] }],
-      });
+      const selected = await pickPath({ files: ["zip", "skill"], filterName: "Skills" });
       if (!selected) return;
-      installLocalSource(selected as string);
+      installLocalSource(selected);
     } catch (error: unknown) {
       const message = getErrorMessage(error, t("common.error"));
       setLocalError(message);
@@ -356,10 +348,7 @@ export function InstallSkills() {
   const handleBatchImportFolder = async () => {
     let unlisten: (() => void) | null = null;
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-      });
+      const selected = await pickPath({ directory: true });
       if (!selected) return;
 
       const toastId = toast.loading(t("install.local.batchImporting"));
@@ -375,9 +364,7 @@ export function InstallSkills() {
         }
       );
 
-      const result: BatchImportResult = await api.batchImportFolder(
-        selected as string
-      );
+      const result: BatchImportResult = await api.batchImportFolder(selected);
 
       if (result.errors.length > 0) {
         const previewErrors = result.errors.slice(0, 3).join("; ");
@@ -1218,8 +1205,6 @@ export function InstallSkills() {
                   <button
                     type="button"
                     onClick={handleLocalFolderInstall}
-                    disabled={!!pickerBlock}
-                    title={pickerBlock}
                     className="app-button-primary"
                   >
                     <FolderUp className="h-4 w-4" />
@@ -1228,8 +1213,6 @@ export function InstallSkills() {
                   <button
                     type="button"
                     onClick={handleLocalFileInstall}
-                    disabled={!!pickerBlock}
-                    title={pickerBlock}
                     className="app-button-secondary bg-background"
                   >
                     <UploadCloud className="h-4 w-4" />
@@ -1238,8 +1221,6 @@ export function InstallSkills() {
                   <button
                     type="button"
                     onClick={handleBatchImportFolder}
-                    disabled={!!pickerBlock}
-                    title={pickerBlock}
                     className="app-button-secondary bg-background"
                   >
                     <FolderInput className="h-4 w-4" />

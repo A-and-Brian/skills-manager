@@ -677,6 +677,8 @@
     "repoPathCustomHint": "Using a custom central repository path",
     "changeDir": "Change Directory",
     "openInFinder": "Open Folder",
+    "copyPath": "Copy Path",
+    "pathCopied": "Path copied",
     "syncMode": "Default Sync Mode",
     "syncModeDesc": "Symlinks are recommended — minimal disk usage with live updates. Applies to both global and project workspaces; note that symlinks in a project point to this machine's central library and won't travel with the repo.",
     "defaultProjectMode": "Default Mode for New Projects",
@@ -1282,9 +1284,20 @@
     "switchToLocal": "Switch to Local",
     "lost": "Connection to {{name}} was lost.",
     "reconnect": "Reconnect",
-    "pickerUnavailable": "Choosing folders on {{name}} isn’t available yet.",
-    "finderUnavailable": "Folders on {{name}} can’t be opened from this computer.",
     "backupLocalTitle": "Backup runs per machine.",
     "backupLocalBody": "This page manages this computer’s backup. {{name}} backs up from its own Skills Manager to the same repository."
+  },
+  "remotePicker": {
+    "titleFolder": "Choose a folder on {{name}}",
+    "titleFile": "Choose a file on {{name}}",
+    "pathLabel": "Folder path",
+    "pathPlaceholder": "/path/to/folder",
+    "go": "Go",
+    "up": "Up one folder",
+    "loadFailed": "This folder can’t be opened.",
+    "emptyFolder": "No folders here.",
+    "emptyFile": "No folders or matching files here.",
+    "chooseFileHint": "Choose a file.",
+    "select": "Select"
   }
 }
