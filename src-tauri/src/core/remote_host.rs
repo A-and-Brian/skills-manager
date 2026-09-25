@@ -103,6 +103,29 @@ fn ssh_command(host: &RemoteHostRecord, cli_args: &[&str]) -> Command {
     cmd
 }
 
+/// `skills-manager-cli CLI_ARGS` on the host, the way the live session runs
+/// it: normally `serve --stdio`. `-T` keeps a terminal out of the byte
+/// stream; the keepalives notice a dead link within about 45 s, since
+/// requests themselves have no timeout.
+pub fn cli_command(host: &RemoteHostRecord, cli_args: &[&str]) -> Command {
+    let mut cmd = Command::new("ssh");
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd.arg("-T")
+        .args(["-o", "BatchMode=yes"])
+        .arg("-o")
+        .arg(format!("ConnectTimeout={CONNECT_TIMEOUT_SECS}"))
+        .args(["-o", "ServerAliveInterval=15"])
+        .args(["-o", "ServerAliveCountMax=3"])
+        .arg("--")
+        .arg(&host.ssh_target)
+        .arg(remote_command(host, cli_args));
+    cmd
+}
+
 /// The single string ssh hands to the remote login shell. It is wrapped in
 /// `sh -c` so the resolver runs under POSIX `sh` whatever the login shell is;
 /// on a non-POSIX remote `sh` itself is missing, which [`interpret_output`]
@@ -135,7 +158,11 @@ fn interpret_output(host: &RemoteHostRecord, output: Output) -> Result<String, A
 /// Turn a failed ssh run into the error the UI should show. Ordered from the
 /// transport outward: ssh itself, then the remote shell, then the resolver,
 /// then the CLI's own JSON envelope.
-fn classify_failure(host: &RemoteHostRecord, code: Option<i32>, stderr: &str) -> AppError {
+pub(crate) fn classify_failure(
+    host: &RemoteHostRecord,
+    code: Option<i32>,
+    stderr: &str,
+) -> AppError {
     if code == Some(255) {
         return AppError::network(format!(
             "Cannot reach {} over ssh: {}",
@@ -225,6 +252,12 @@ fn last_line(text: &str) -> &str {
     text.lines().last().unwrap_or("").trim()
 }
 
+/// Whether a session ended before its hello because the CLI there predates
+/// `serve`: clap refuses an unknown subcommand with exit 2.
+pub(crate) fn predates_serve(code: Option<i32>, stderr: &str) -> bool {
+    code == Some(2) && stderr.contains("unrecognized subcommand 'serve'")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,6 +288,31 @@ mod tests {
         assert_eq!(shell_quote("it's"), r#"'it'\''s'"#);
         let cmd = remote_command(&host(Some("cli")), &["skills", "install", "https://x/y.git; rm -rf ~"]);
         assert!(cmd.ends_with("'https://x/y.git; rm -rf ~'"));
+    }
+
+    #[test]
+    fn cli_command_keeps_the_link_alive_and_ends_options_before_the_target() {
+        let cmd = cli_command(&host(Some("/opt/sm/cli")), &["serve", "--stdio"]);
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(cmd.get_program(), "ssh");
+        assert_eq!(args[0], "-T");
+        for option in [
+            "BatchMode=yes",
+            "ConnectTimeout=10",
+            "ServerAliveInterval=15",
+            "ServerAliveCountMax=3",
+        ] {
+            assert!(args.iter().any(|a| a == option), "missing {option}");
+        }
+        let target = args.iter().position(|a| a == "me@build").unwrap();
+        assert_eq!(args[target - 1], "--");
+        assert_eq!(
+            args[target + 1],
+            r#"sh -c 'exec "$0" "$@"' '/opt/sm/cli' 'serve' '--stdio'"#
+        );
     }
 
     #[test]
@@ -293,6 +351,13 @@ mod tests {
             serde_json::from_str(r#"{"ok":false,"code":"INVALID_ARGUMENT","message":"missing --agent"}"#)
                 .unwrap();
         assert_eq!(map_envelope(&bad_args).kind, ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn only_a_refused_serve_marks_an_older_cli() {
+        assert!(predates_serve(Some(2), "error: unrecognized subcommand 'serve'\n\nUsage: skills-manager-cli"));
+        assert!(!predates_serve(Some(2), "error: unexpected argument '--stdio' found"));
+        assert!(!predates_serve(Some(1), "error: unrecognized subcommand 'serve'"));
     }
 
     #[test]

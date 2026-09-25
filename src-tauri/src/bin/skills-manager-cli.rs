@@ -6,7 +6,7 @@ use anyhow::{Context, anyhow, bail};
 use app_lib::commands::{presets as preset_cmd, skills as cmd, tools as tool_cmd};
 use app_lib::core::{
     app_state, audit_log::AuditDraft, central_repo, error::AppError, git_backup, git_fetcher,
-    installer, merge, repo_lock::RepoLock, scenario_service, skill_metadata,
+    installer, merge, repo_lock::RepoLock, scenario_service, serve, skill_metadata,
     skill_store::SkillStore, skillssh_api, sync_engine, sync_metadata, tool_adapters, tool_service,
 };
 use clap::{Args, Parser, Subcommand};
@@ -20,6 +20,10 @@ struct Cli {
     json: bool,
     #[arg(long, global = true)]
     skills_root: Option<PathBuf>,
+    /// Use this folder as the whole Skills Manager base (library, database,
+    /// settings) instead of the configured one. For hermetic tests.
+    #[arg(long, global = true, hide = true, conflicts_with = "skills_root")]
+    base_dir: Option<PathBuf>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -33,6 +37,16 @@ enum Commands {
     #[command(alias = "scenarios")]
     Presets(PresetArgs),
     Git(GitArgs),
+    /// Answer the app's commands over stdin/stdout, for a Skills Manager app
+    /// on another machine connected over ssh.
+    Serve(ServeArgs),
+}
+
+#[derive(Args, Debug)]
+struct ServeArgs {
+    /// Speak the protocol on stdin/stdout (the only transport).
+    #[arg(long, required = true)]
+    stdio: bool,
 }
 
 #[derive(Args, Debug)]
@@ -692,6 +706,9 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         central_repo::set_runtime_base_dir_override(Some(base));
         central_repo::set_runtime_skills_dir_override(Some(skills_root.clone()));
     }
+    if let Some(base_dir) = &cli.base_dir {
+        central_repo::set_runtime_base_dir_override(Some(base_dir.clone()));
+    }
 
     let store = app_state::initialize_cli_store()?;
 
@@ -701,6 +718,8 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Skills(args) => run_skills(args, &store, cli.json),
         Commands::Presets(args) => run_presets(args, &store, cli.json),
         Commands::Git(args) => run_git(args, &store, cli.skills_root.is_some(), cli.json),
+        // stdout carries the protocol; nothing else may print there.
+        Commands::Serve(_) => Ok(serve::serve_stdio(store)?),
     }
 }
 

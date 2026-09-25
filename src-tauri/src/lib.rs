@@ -793,6 +793,9 @@ fn teardown_before_exit(app: &tauri::AppHandle) {
             log::error!("Failed to destroy main window while quitting: {err}");
         }
     }
+    if let Some(sessions) = app.try_state::<core::remote_session::RemoteSessions>() {
+        sessions.close_now();
+    }
     // 退出前 auto-backup (§3.4): local commit only, fail-fast on a busy lock,
     // after the window is gone so quitting feels instant.
     if let Some(store) = app.try_state::<Arc<core::skill_store::SkillStore>>() {
@@ -855,6 +858,10 @@ pub fn run() {
                 events: Arc::new(core::host::TauriEvents(app.handle().clone())),
             };
             app.manage(host.clone());
+            app.manage(core::remote_session::RemoteSessions::new(
+                host.store.clone(),
+                host.events.clone(),
+            ));
             log::info!(
                 "app start: version={} os={} arch={}",
                 app.config().version.clone().unwrap_or_default(),
@@ -1148,6 +1155,9 @@ pub fn run() {
             commands::remote_hosts::remote_host_undeploy,
             commands::remote_hosts::remote_host_install,
             commands::remote_hosts::remote_host_update_skill,
+            commands::remote_hosts::remote_host_connect,
+            commands::remote_hosts::remote_host_disconnect,
+            commands::remote_hosts::remote_invoke,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
