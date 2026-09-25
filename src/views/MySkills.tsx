@@ -34,6 +34,7 @@ import { cn } from "../utils";
 import { useApp } from "../context/AppContext";
 import { useMultiSelect } from "../hooks/useMultiSelect";
 import { useLibraryViewPrefs } from "../hooks/useLibraryViewPrefs";
+import { usePresetSkillOrder } from "../hooks/usePresetSkillOrder";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TagRenameDialog } from "../components/TagRenameDialog";
 import { SkillDetailPanel } from "../components/SkillDetailPanel";
@@ -154,18 +155,9 @@ export function MySkills() {
   const [tagInput, setTagInput] = useState("");
   const tagInputRef = useRef<HTMLInputElement>(null);
 
-  const [presetSkillOrder, setPresetSkillOrder] = useState<string[]>([]);
+  const { presetSkillOrder, reorder: reorderPresetSkills } = usePresetSkillOrder(viewedPreset, skills);
 
   const viewedPresetName = viewedPreset?.name || t("mySkills.currentPresetFallback");
-
-  // Fetch sort order whenever active preset changes
-  useEffect(() => {
-    if (!viewedPreset) {
-      setPresetSkillOrder([]);
-      return;
-    }
-    api.getPresetSkillOrder(viewedPreset.id).then(setPresetSkillOrder).catch(() => {});
-  }, [viewedPreset, skills]);
 
   // Skills with an unresolved sync conflict get a "needs attention" badge
   // that jumps to the Backup page (merge-engine design §4 UI).
@@ -335,17 +327,9 @@ export function MySkills() {
       const [moved] = reordered.splice(oldIndex, 1);
       reordered.splice(newIndex, 0, moved);
 
-      // Optimistic update
-      setPresetSkillOrder(reordered.map((s) => s.id));
-
-      try {
-        await api.reorderPresetSkills(viewedPreset.id, reordered.map((s) => s.id));
-      } catch {
-        // Revert on failure
-        await api.getPresetSkillOrder(viewedPreset.id).then(setPresetSkillOrder).catch(() => {});
-      }
+      await reorderPresetSkills(viewedPreset.id, reordered.map((s) => s.id));
     },
-    [filtered, viewedPreset]
+    [filtered, viewedPreset, reorderPresetSkills]
   );
 
   // Reordering only makes sense in the flat preset view: grouped cards can
