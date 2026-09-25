@@ -656,6 +656,8 @@
     "openInFinder": "Open Folder",
     "syncMode": "Default Sync Mode",
     "syncModeDesc": "Symlinks are recommended — minimal disk usage with live updates. Applies to both global and project workspaces; note that symlinks in a project point to this machine's central library and won't travel with the repo.",
+    "defaultProjectMode": "Default Mode for New Projects",
+    "defaultProjectModeDesc": "Used when you link a project; you can still pick the other mode for each one. Existing projects keep their own mode.",
     "symlink": "Symlink",
     "copy": "File Copy",
     "currentPreset": "Current Preset",

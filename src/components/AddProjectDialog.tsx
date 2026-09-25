@@ -37,6 +37,10 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
     setLinkedName("");
     setLinkedPath("");
     setDeployMode("link");
+    api
+      .getSettings("default_project_deploy_mode")
+      .then((v) => { if (v === "copy") setDeployMode(v); })
+      .catch(() => {});
   }, [open]);
 
   if (!open) return null;

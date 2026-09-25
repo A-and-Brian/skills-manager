@@ -656,6 +656,8 @@
     "openInFinder": "打开文件夹",
     "syncMode": "默认同步模式",
     "syncModeDesc": "推荐使用符号链接，占用空间极小且修改可实时生效。全局与项目工作区均生效；注意项目里的符号链接指向本机中央库，不会随仓库带走。",
+    "defaultProjectMode": "新项目的默认模式",
+    "defaultProjectModeDesc": "关联项目时默认使用此模式，每个项目仍可单独选择。已有项目保持各自的模式。",
     "symlink": "符号链接",
     "copy": "文件复制",
     "currentPreset": "当前 Preset",

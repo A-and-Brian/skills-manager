@@ -27,6 +27,7 @@ import {
 export function LibrarySection() {
   const { t } = useTranslation();
   const [syncMode, setSyncMode] = useState("symlink");
+  const [defaultDeployMode, setDefaultDeployMode] = useState<api.ProjectDeployMode>("link");
   const [openingRepo, setOpeningRepo] = useState(false);
   const [centralRepoPath, setCentralRepoPath] = useState("");
   const [centralRepoPathOverride, setCentralRepoPathOverride] = useState<string | null>(null);
@@ -39,6 +40,7 @@ export function LibrarySection() {
 
   useEffect(() => {
     api.getSettings("sync_mode").then((v) => { if (v) setSyncMode(v); });
+    api.getSettings("default_project_deploy_mode").then((v) => { if (v === "copy") setDefaultDeployMode(v); });
     api.getCentralRepoPath().then((path) => {
       setCentralRepoPath(path);
       setCentralRepoPathInput(path);
@@ -59,6 +61,17 @@ export function LibrarySection() {
   const handleSyncModeChange = async (mode: string) => {
     setSyncMode(mode);
     await api.setSettings("sync_mode", mode);
+  };
+
+  const handleDefaultDeployModeChange = async (mode: api.ProjectDeployMode) => {
+    const previous = defaultDeployMode;
+    setDefaultDeployMode(mode);
+    try {
+      await api.setSettings("default_project_deploy_mode", mode);
+    } catch {
+      setDefaultDeployMode(previous);
+      toast.error(t("common.error"));
+    }
   };
 
   const handleOpenRepoInFinder = async () => {
@@ -306,6 +319,30 @@ export function LibrarySection() {
             >
               <Copy className="w-3 h-3" /> {t("settings.copy")}
             </button>
+          </div>
+        </div>
+
+        {/* Default deploy mode for new projects */}
+        <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-[14px] font-semibold text-primary">{t("settings.defaultProjectMode")}</h3>
+            <p className="mt-0.5 text-[12px] text-muted">
+              {t("settings.defaultProjectModeDesc")} {t(`project.settings.modeHint.${defaultDeployMode}`)}
+            </p>
+          </div>
+          <div className="app-segmented flex-wrap bg-background">
+            {(["link", "copy"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => handleDefaultDeployModeChange(mode)}
+                className={cn(
+                  SEGMENTED_BUTTON_CLASS,
+                  defaultDeployMode === mode ? "bg-surface-active text-secondary" : "text-muted hover:text-tertiary"
+                )}
+              >
+                {t(`project.settings.mode.${mode}`)}
+              </button>
+            ))}
           </div>
         </div>
 
