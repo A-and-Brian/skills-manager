@@ -32,6 +32,7 @@ import { isSettingsPath } from "../views/settings/categories";
 import { CODING_WORKSPACE_CONFIG, LOBSTER_WORKSPACE_CONFIG, type WorkspaceConfig } from "../views/workspaceConfigs";
 import type { SyncHealth, ToolCategory, ToolInfo } from "../lib/tauri";
 import { getPresetIconOption } from "../lib/presetIcons";
+import { applyStoredOrder } from "../lib/storedOrder";
 
 function getSyncHealthIndicator(health: SyncHealth, skillCount: number): { color: string; title: string } | null {
   if (skillCount === 0) return null;
@@ -91,27 +92,11 @@ export function Sidebar() {
   useEffect(() => { setOrderedProjects(projects); }, [projects]);
   useEffect(() => {
     const stored = localStorage.getItem("skills-manager:tool-order");
-    const storedOrder: string[] = stored ? JSON.parse(stored) : [];
-    const sorted = [
-      ...storedOrder.flatMap((key) => {
-        const t = installedCodingTools.find((t) => t.key === key);
-        return t ? [t] : [];
-      }),
-      ...installedCodingTools.filter((t) => !storedOrder.includes(t.key)),
-    ];
-    setOrderedCodingTools(sorted);
+    setOrderedCodingTools(applyStoredOrder(installedCodingTools, stored ? JSON.parse(stored) : []));
   }, [installedCodingTools]);
   useEffect(() => {
     const stored = localStorage.getItem("skills-manager:lobster-tool-order");
-    const storedOrder: string[] = stored ? JSON.parse(stored) : [];
-    const sorted = [
-      ...storedOrder.flatMap((key) => {
-        const t = installedLobsterTools.find((t) => t.key === key);
-        return t ? [t] : [];
-      }),
-      ...installedLobsterTools.filter((t) => !storedOrder.includes(t.key)),
-    ];
-    setOrderedLobsterTools(sorted);
+    setOrderedLobsterTools(applyStoredOrder(installedLobsterTools, stored ? JSON.parse(stored) : []));
   }, [installedLobsterTools]);
 
   const handleDragEnd = (result: DropResult) => {
