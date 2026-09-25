@@ -364,7 +364,7 @@ pub(super) fn update_vendored_from_center(
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
-    use super::super::convert_project_to_copy;
+    use super::super::deploy_mode::convert_project_to_copy;
     #[cfg(unix)]
     use super::super::test_fixtures::{agent_selection_fixture, update_vendored_x};
     #[cfg(unix)]
