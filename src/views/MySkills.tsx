@@ -1092,6 +1092,7 @@ export function MySkills() {
             <span aria-hidden="true" className="mx-1 h-5 w-px shrink-0 self-center bg-border-subtle" />
             <button
               onClick={() => setViewMode("grid")}
+              data-testid="view-grid"
               className={cn(
                 "rounded-md p-2 transition-colors outline-none",
                 viewMode === "grid" ? "bg-surface-active text-secondary" : "text-muted hover:text-tertiary"
@@ -1101,6 +1102,7 @@ export function MySkills() {
             </button>
             <button
               onClick={() => setViewMode("list")}
+              data-testid="view-list"
               className={cn(
                 "rounded-md p-2 transition-colors outline-none",
                 viewMode === "list" ? "bg-surface-active text-secondary" : "text-muted hover:text-tertiary"

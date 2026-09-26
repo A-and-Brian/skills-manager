@@ -358,6 +358,7 @@ export function Sidebar() {
                               )}>
                                 <div
                                   {...handleProps}
+                                  data-testid="drag-handle"
                                   className="rounded p-1 text-faint cursor-grab active:cursor-grabbing"
                                 >
                                   <GripVertical className="h-3 w-3" />
@@ -498,6 +499,7 @@ export function Sidebar() {
                               )}>
                                 <div
                                   {...handleProps}
+                                  data-testid="drag-handle"
                                   className="rounded p-1 text-faint cursor-grab active:cursor-grabbing"
                                 >
                                   <GripVertical className="h-3 w-3" />
@@ -658,6 +660,7 @@ export function Sidebar() {
                               )}>
                                 <div
                                   {...handleProps}
+                                  data-testid="drag-handle"
                                   className="rounded p-1 text-faint cursor-grab active:cursor-grabbing"
                                 >
                                   <GripVertical className="h-3 w-3" />
