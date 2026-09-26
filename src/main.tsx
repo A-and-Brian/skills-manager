@@ -5,6 +5,9 @@ import { logStartupEvent } from "./lib/tauri";
 import "./index.css";
 import App from "./App.tsx";
 
+// E2E tests only: answer every backend call from a fake. Vite drops this from other builds.
+if (import.meta.env.MODE === "e2e") await import("../e2e/fake-backend");
+
 await i18nReady;
 logStartupEvent("i18n_ready", performance.now()).catch(() => {});
 
