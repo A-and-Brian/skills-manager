@@ -1,4 +1,5 @@
 import type { ProjectSkill } from "./tauri";
+import { matchesTagFilter } from "./tagFilter";
 
 /** The folder a copy-mode project vendors its skills into. */
 export const VENDORED_SKILLS_DIR = ".agents/skills";
@@ -90,4 +91,84 @@ export function groupProjectSkills(skills: ProjectSkill[]): ProjectSkillGroup[] 
       agentsOverridden: found.some((variant) => variant.agents_overridden),
     };
   }).sort((a, b) => byName(a.name.toLowerCase(), b.name.toLowerCase()));
+}
+
+/** The project copy has changes the library lacks, so it can be pushed to the library. */
+export function isCenterUpdatable(status: ProjectSkill["sync_status"]): boolean {
+  return status === "project_only" || status === "project_newer" || status === "diverged";
+}
+
+/** The library has a version the project copy can be updated from. */
+export function isProjectUpdatable(status: ProjectSkill["sync_status"]): boolean {
+  return status === "project_newer" || status === "center_newer" || status === "diverged";
+}
+
+export function getAssignedAgents(variants: ProjectSkill[]) {
+  return Array.from(new Set(variants.map((variant) => variant.agent))).sort();
+}
+
+/** One dot per agent, in variant order. */
+export function getAgentDotTargets(variants: ProjectSkill[]) {
+  const seen = new Set<string>();
+  const targets: { key: string; display_name: string }[] = [];
+  for (const v of variants) {
+    if (!seen.has(v.agent)) {
+      seen.add(v.agent);
+      targets.push({ key: v.agent, display_name: v.agent_display_name });
+    }
+  }
+  return targets;
+}
+
+export interface ProjectSkillFilter {
+  search: string;
+  tags: ReadonlySet<string>;
+  mode: "all" | "enabled" | "disabled";
+}
+
+/** Search by name or description, then the tag pills, then enabled on any agent or none. */
+export function filterProjectSkillGroups(groups: ProjectSkillGroup[], filter: ProjectSkillFilter) {
+  const search = filter.search.toLowerCase();
+  return groups.filter((skill) => {
+    const matchesSearch =
+      skill.name.toLowerCase().includes(search) ||
+      (skill.description || "").toLowerCase().includes(search);
+    if (!matchesSearch) return false;
+    if (!matchesTagFilter(skill.tags, filter.tags)) return false;
+    if (filter.mode === "enabled") return skill.enabledCount > 0;
+    if (filter.mode === "disabled") return skill.enabledCount === 0;
+    return true;
+  });
+}
+
+/** The stored last-used agent list, or null when missing or malformed. Non-string entries are dropped. */
+export function parseLastUsedAgents(raw: string | null): string[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((x): x is string => typeof x === "string");
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+/**
+ * The agents the add-skills sheet starts with. A project that chose its agents
+ * always starts from them; the last-used list only stands in for projects that
+ * never chose, and only if some of its agents are still available.
+ */
+export function pickInitialAgents(
+  available: ReadonlySet<string>,
+  selected: string[],
+  lastUsed: string[] | null,
+  hasAgentSelection: boolean,
+): string[] {
+  if (!hasAgentSelection && lastUsed && lastUsed.length > 0) {
+    const filtered = lastUsed.filter((k) => available.has(k));
+    if (filtered.length > 0) return filtered;
+  }
+  return selected.filter((k) => available.has(k));
 }

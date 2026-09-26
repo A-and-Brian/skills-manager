@@ -23,11 +23,9 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  useSortable,
   arrayMove,
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { confirm as dialogConfirm } from "@tauri-apps/plugin-dialog";
@@ -39,50 +37,7 @@ import * as api from "../../lib/tauri";
 import { getErrorMessage } from "../../lib/error";
 import { ACTION_BUTTON_CLASS, FIELD_CLASS, compactHomePath, pickDirectory } from "./shared";
 import { HostBadge } from "../../components/HostBadge";
-
-interface SortableAgentCardProps {
-  agentKey: string;
-  dragLabel: string;
-  children: (dragHandle: React.ReactNode) => React.ReactNode;
-}
-
-function SortableAgentCard({ agentKey, dragLabel, children }: SortableAgentCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: agentKey });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : undefined,
-  };
-
-  const handle = (
-    <button
-      type="button"
-      ref={setActivatorNodeRef}
-      {...listeners}
-      onClick={(e) => e.stopPropagation()}
-      className="mt-0.5 flex shrink-0 cursor-grab items-center justify-center rounded text-faint outline-none transition-colors hover:text-muted active:cursor-grabbing"
-      title={dragLabel}
-      aria-label={dragLabel}
-    >
-      <GripVertical className="h-3.5 w-3.5" />
-    </button>
-  );
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} className="h-full">
-      {children(handle)}
-    </div>
-  );
-}
+import { SortableItem } from "../../components/SortableItem";
 
 interface AgentGroupDndProps {
   items: api.ToolInfo[];
@@ -103,9 +58,20 @@ function AgentGroupDnd({ items, sensors, dragLabel, onDragEnd, renderAgentCard }
       <SortableContext items={groupKeys} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2 xl:grid-cols-3">
           {items.map((agent) => (
-            <SortableAgentCard key={agent.key} agentKey={agent.key} dragLabel={dragLabel}>
-              {(handle) => renderAgentCard(agent, handle)}
-            </SortableAgentCard>
+            <SortableItem key={agent.key} id={agent.key}>
+              {(handleProps) => renderAgentCard(
+                agent,
+                <button
+                  type="button"
+                  {...handleProps}
+                  className="mt-0.5 flex shrink-0 cursor-grab items-center justify-center rounded text-faint outline-none transition-colors hover:text-muted active:cursor-grabbing"
+                  title={dragLabel}
+                  aria-label={dragLabel}
+                >
+                  <GripVertical className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </SortableItem>
           ))}
         </div>
       </SortableContext>

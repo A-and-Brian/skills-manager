@@ -1,4 +1,6 @@
 import type { ManagedSkill } from "./tauri";
+import { UNTAGGED_FILTER } from "./skillTags";
+import { matchesTagFilter } from "./tagFilter";
 import { creatorKey, creatorLabel, creatorName, LOCAL_CREATOR, skillCreator, type SkillCreator } from "./skillCreator";
 
 /**
@@ -23,9 +25,8 @@ export interface LibraryQuery {
   /** Already lower-cased search text; empty string matches everything. */
   search: string;
   sources: ReadonlySet<string>;
-  /** Tag names, or the UNTAGGED sentinel. */
+  /** Tag names, or UNTAGGED_FILTER. */
   tags: ReadonlySet<string>;
-  untaggedSentinel: string;
   /** Agent keys, or NOT_DEPLOYED. */
   agents: ReadonlySet<string>;
   /** Creator keys from `creatorKey`, or LOCAL_CREATOR. */
@@ -99,10 +100,7 @@ export function filterLibrarySkills(
       if (!haystack.some((text) => text.toLowerCase().includes(q.search))) return false;
     }
     if (q.sources.size > 0 && !q.sources.has(skill.source_type)) return false;
-    if (q.tags.size > 0) {
-      const matchUntagged = q.tags.has(q.untaggedSentinel) && skill.tags.length === 0;
-      if (!matchUntagged && !skill.tags.some((tag) => q.tags.has(tag))) return false;
-    }
+    if (!matchesTagFilter(skill.tags, q.tags)) return false;
     if (q.agents.size > 0 && !agentKeysOf(skill).some((key) => q.agents.has(key))) return false;
     if (q.creators.size > 0 && !q.creators.has(creatorKey(skillCreator(skill)))) return false;
     if (q.updates.size > 0) {
@@ -148,7 +146,7 @@ export function libraryFilterCounts(
   };
   return {
     sources: tally({ sources: new Set() }, (skill) => [skill.source_type]),
-    tags: tally({ tags: new Set() }, (skill) => (skill.tags.length > 0 ? skill.tags : [q.untaggedSentinel])),
+    tags: tally({ tags: new Set() }, (skill) => (skill.tags.length > 0 ? skill.tags : [UNTAGGED_FILTER])),
     agents: tally({ agents: new Set() }, agentKeysOf),
     creators: tally({ creators: new Set() }, (skill) => [creatorKey(skillCreator(skill))]),
     updates: tally({ updates: new Set() }, (skill) => [updateFilterOf(skill)]),
@@ -232,5 +230,57 @@ export function groupLibrarySkills(skills: readonly ManagedSkill[], groupBy: Lib
     if (aEmpty !== bEmpty) return aEmpty - bEmpty;
     if (groupBy === "tag") return a.key.localeCompare(b.key);
     return groupBy === "creator" ? nameOf(a).localeCompare(nameOf(b)) : 0;
+  });
+}
+
+function centralDirName(skill: ManagedSkill) {
+  return skill.central_path.split(/[\\/]/).filter(Boolean).pop() || skill.name;
+}
+
+/**
+ * The name to show for each skill id. Skills that share a name show their
+ * library folder name instead, so the duplicates can be told apart.
+ */
+export function skillDisplayNames(skills: readonly ManagedSkill[]): Map<string, string> {
+  const nameCounts = new Map<string, number>();
+  for (const skill of skills) {
+    nameCounts.set(skill.name, (nameCounts.get(skill.name) || 0) + 1);
+  }
+
+  const displayNames = new Map<string, string>();
+  for (const skill of skills) {
+    const dirName = centralDirName(skill);
+    displayNames.set(
+      skill.id,
+      (nameCounts.get(skill.name) || 0) > 1 && dirName !== skill.name
+        ? dirName
+        : skill.name
+    );
+  }
+  return displayNames;
+}
+
+/** Git and skills.sh skills can always be updated; local and imported ones only if they remember their source. */
+export function canRefreshSkill(skill: ManagedSkill): boolean {
+  return (
+    skill.source_type === "git" ||
+    skill.source_type === "skillssh" ||
+    ((skill.source_type === "local" || skill.source_type === "import") && !!skill.source_ref)
+  );
+}
+
+/**
+ * Only the selected skills a preset toggle would actually change: when
+ * enabling, the ones not yet in the preset; when disabling, the ones in it.
+ */
+export function togglableSkills(
+  skills: readonly ManagedSkill[],
+  selectedIds: ReadonlySet<string>,
+  presetId: string,
+  enabling: boolean,
+): ManagedSkill[] {
+  return skills.filter((skill) => {
+    if (!selectedIds.has(skill.id)) return false;
+    return skill.preset_ids.includes(presetId) !== enabling;
   });
 }

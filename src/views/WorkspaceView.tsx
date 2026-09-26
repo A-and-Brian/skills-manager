@@ -34,6 +34,7 @@ import type { ManagedSkill, ProjectSkill } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
 import { copyCreator, type SkillCreator } from "../lib/skillCreator";
 import { getTagActiveColor, getTagColor, pruneStaleTagFilters, UNTAGGED_FILTER } from "../lib/skillTags";
+import { matchesTagFilter } from "../lib/tagFilter";
 import { AddSkillsSheet } from "../components/AddSkillsSheet";
 import { useMultiSelect } from "../hooks/useMultiSelect";
 import { MultiSelectToolbar } from "../components/MultiSelectToolbar";
@@ -458,12 +459,7 @@ export function WorkspaceView({ config }: { config: WorkspaceConfig }) {
             (skill.description || "").toLowerCase().includes(q);
           if (!matchesQuery) return false;
         }
-        if (tagFilters.size > 0) {
-          const wantUntagged = tagFilters.has(UNTAGGED_FILTER);
-          const matchUntagged = wantUntagged && skill.tags.length === 0;
-          const matchTag = skill.tags.some((tag) => tagFilters.has(tag));
-          if (!matchUntagged && !matchTag) return false;
-        }
+        if (!matchesTagFilter(skill.tags, tagFilters)) return false;
         return true;
       })
       .sort((a, b) => {

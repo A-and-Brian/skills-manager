@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectSkill } from "./tauri";
-import { groupProjectSkills, isVendoredSkillsDir } from "./projectSkillGroups";
+import {
+  filterProjectSkillGroups,
+  getAgentDotTargets,
+  getAssignedAgents,
+  groupProjectSkills,
+  isCenterUpdatable,
+  isProjectUpdatable,
+  isVendoredSkillsDir,
+  parseLastUsedAgents,
+  pickInitialAgents,
+  type ProjectSkillFilter,
+} from "./projectSkillGroups";
+import { UNTAGGED_FILTER } from "./skillTags";
 
 function variant(agent: string, displayName: string, overrides: Partial<ProjectSkill> = {}): ProjectSkill {
   return {
@@ -86,5 +98,100 @@ describe("isVendoredSkillsDir", () => {
     expect(isVendoredSkillsDir("./.agents/skills/")).toBe(true);
     expect(isVendoredSkillsDir(".agents\\skills")).toBe(true);
     expect(isVendoredSkillsDir(".claude/skills")).toBe(false);
+  });
+});
+
+describe("isCenterUpdatable / isProjectUpdatable", () => {
+  it.each([
+    ["project_only", true, false],
+    ["in_sync", false, false],
+    ["project_newer", true, true],
+    ["center_newer", false, true],
+    ["diverged", true, true],
+  ] as const)("%s: center %s, project %s", (status, center, project) => {
+    expect(isCenterUpdatable(status)).toBe(center);
+    expect(isProjectUpdatable(status)).toBe(project);
+  });
+});
+
+describe("getAssignedAgents / getAgentDotTargets", () => {
+  const variants = [
+    variant("cursor", "Cursor"),
+    variant("claude_code", "Claude Code"),
+    variant("cursor", "Cursor", { relative_path: "other" }),
+  ];
+
+  it("lists each agent once, sorted by key", () => {
+    expect(getAssignedAgents(variants)).toEqual(["claude_code", "cursor"]);
+  });
+
+  it("gives one dot per agent in variant order", () => {
+    expect(getAgentDotTargets(variants)).toEqual([
+      { key: "cursor", display_name: "Cursor" },
+      { key: "claude_code", display_name: "Claude Code" },
+    ]);
+  });
+});
+
+describe("filterProjectSkillGroups", () => {
+  const groups = groupProjectSkills([
+    variant("claude_code", "Claude Code", { name: "Review", relative_path: "review", tags: ["code"] }),
+    variant("claude_code", "Claude Code", {
+      name: "Docs",
+      relative_path: "docs",
+      description: "Writes REVIEW notes",
+      enabled: false,
+    }),
+  ]);
+  const names = (filter: Partial<ProjectSkillFilter>) =>
+    filterProjectSkillGroups(groups, { search: "", tags: new Set(), mode: "all", ...filter }).map((g) => g.name);
+
+  it("searches name and description ignoring case", () => {
+    expect(names({ search: "Review" })).toEqual(["Docs", "Review"]);
+    expect(names({ search: "doc" })).toEqual(["Docs"]);
+  });
+
+  it("filters by tag, including the untagged pill", () => {
+    expect(names({ tags: new Set(["code"]) })).toEqual(["Review"]);
+    expect(names({ tags: new Set([UNTAGGED_FILTER]) })).toEqual(["Docs"]);
+  });
+
+  it("filters by enabled on any agent", () => {
+    expect(names({ mode: "enabled" })).toEqual(["Review"]);
+    expect(names({ mode: "disabled" })).toEqual(["Docs"]);
+  });
+});
+
+describe("parseLastUsedAgents", () => {
+  it("reads a stored list of agent keys", () => {
+    expect(parseLastUsedAgents('["cursor","claude_code"]')).toEqual(["cursor", "claude_code"]);
+  });
+
+  it("drops entries that are not strings", () => {
+    expect(parseLastUsedAgents('["cursor",1,null]')).toEqual(["cursor"]);
+  });
+
+  it("is null when missing, malformed or not a list", () => {
+    expect(parseLastUsedAgents(null)).toBeNull();
+    expect(parseLastUsedAgents("")).toBeNull();
+    expect(parseLastUsedAgents("{not json")).toBeNull();
+    expect(parseLastUsedAgents('{"agents":["cursor"]}')).toBeNull();
+  });
+});
+
+describe("pickInitialAgents", () => {
+  const available = new Set(["claude_code", "cursor", "cline"]);
+
+  it("uses the last-used agents that are still available when the project never chose", () => {
+    expect(pickInitialAgents(available, ["claude_code"], ["cursor", "gone"], false)).toEqual(["cursor"]);
+  });
+
+  it("keeps the project's own selection when it has one", () => {
+    expect(pickInitialAgents(available, ["claude_code"], ["cursor"], true)).toEqual(["claude_code"]);
+  });
+
+  it("falls back to the selection when no last-used agent is available", () => {
+    expect(pickInitialAgents(available, ["claude_code", "gone"], ["gone"], false)).toEqual(["claude_code"]);
+    expect(pickInitialAgents(available, ["cline"], null, false)).toEqual(["cline"]);
   });
 });

@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+e2e/test-results
+e2e/playwright-report
 *.local
 
 # TypeScript build info
