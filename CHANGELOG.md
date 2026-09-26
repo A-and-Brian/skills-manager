@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.41.0
+
+### Minor Changes
+
+- [#1](https://github.com/A-and-Brian/skills-manager/pull/1) [`d4f2cd8`](https://github.com/A-and-Brian/skills-manager/commit/d4f2cd8edb84b7ebb7c8e27f9757e786775d086a) Thanks [@ybtam](https://github.com/ybtam)! - Group the Library by tag, source or agent, sort it by name, recent changes or update status, and filter by agent or update state. Unmanaged skills in an agent's global folder can now be deleted even when their content matches a library skill. Adds remote hosts: manage skills on another machine running Skills Manager over `ssh`, with no daemon, open port or stored credentials.
+
+- [#2](https://github.com/A-and-Brian/skills-manager/pull/2) [`e0713b9`](https://github.com/A-and-Brian/skills-manager/commit/e0713b9d17a1005d5a4872743cf98782f167622d) Thanks [@ybtam](https://github.com/ybtam)! - Choose which agents each project uses. New skills added to the project go only to those agents. Changing the list previews what will be added, removed or skipped, then applies it to every skill except ones whose agents were set by hand, which can rejoin with "Use project agents".
+
+- [#3](https://github.com/A-and-Brian/skills-manager/pull/3) [`a0913ed`](https://github.com/A-and-Brian/skills-manager/commit/a0913edcd0b0c0c2a40d867778e6d0fadfa45c3d) Thanks [@ybtam](https://github.com/ybtam)! - Add a vendored copy mode for projects. Skill files are copied into `<project>/.agents/skills` and committed with the repo, and every other agent gets a relative symlink to that copy, so a fresh clone works on any machine without the library. Existing link-mode projects can be converted, with a preview first. On Windows, the agent links need Developer Mode or the symlink privilege.
+
+- [#4](https://github.com/A-and-Brian/skills-manager/pull/4) [`b0de590`](https://github.com/A-and-Brian/skills-manager/commit/b0de59033208ba35a547eb63654edbe6b78d51b9) Thanks [@ybtam](https://github.com/ybtam)! - Switch a project between "Linked to library" and "Vendored copy" from its new Settings button or in the Add Project dialog. Converting shows what will be copied, relinked or kept, and the `.agents/skills` group stays locked on for skills that have a vendored copy.
+
+- [#6](https://github.com/A-and-Brian/skills-manager/pull/6) [`fddf380`](https://github.com/A-and-Brian/skills-manager/commit/fddf380c652cf0bf063807b922fb4c5bab661da1) Thanks [@ybtam](https://github.com/ybtam)! - Settings now has a category sidebar (General, Agents, Library & Sync, Git Backup, Network, Remote Hosts, About) and shows one category at a time. Each category has its own URL, and switching categories keeps anything you've half typed.
+
+- [#7](https://github.com/A-and-Brian/skills-manager/pull/7) [`5116add`](https://github.com/A-and-Brian/skills-manager/commit/5116adde332d7e9ea7b678e0d0ce560d20b16f77) Thanks [@ybtam](https://github.com/ybtam)! - Add a Default Mode for New Projects setting under Settings → Library & Sync (Linked to library or Vendored copy). Existing projects keep their own mode.
+
+- [#8](https://github.com/A-and-Brian/skills-manager/pull/8) [`f03b97d`](https://github.com/A-and-Brian/skills-manager/commit/f03b97deeb514a38641013d50f63961f329a60f7) Thanks [@ybtam](https://github.com/ybtam)! - Show who created each skill in the Library, with a GitHub avatar and `@owner` (or the SKILL.md `author`, else "Local"). The Library can group and filter by creator, and search matches it.
+
+- [#9](https://github.com/A-and-Brian/skills-manager/pull/9) [`1c22f12`](https://github.com/A-and-Brian/skills-manager/commit/1c22f12e7e0ef905dd4e06ea48eb69e2c30cb204) Thanks [@ybtam](https://github.com/ybtam)! - Show each skill's creator in the Add Skills picker, project and global workspace views, and on remote host rows.
+
+- [#10](https://github.com/A-and-Brian/skills-manager/pull/10) [`e39f5d4`](https://github.com/A-and-Brian/skills-manager/commit/e39f5d4eb8c95ba2d414282e7bc8dedd00174883) Thanks [@ybtam](https://github.com/ybtam)! - Replace the Library's four rows of filter pills with a single Filter popover that has searchable Source, Creator, Tag, Agent and Update status lists and live counts. Active filters show as removable chips under the toolbar, and Group by is now a dropdown.
+
+- [#14](https://github.com/A-and-Brian/skills-manager/pull/14) [`8e49a92`](https://github.com/A-and-Brian/skills-manager/commit/8e49a928bc177c95cb88679d41fe06de449e6117) Thanks [@ybtam](https://github.com/ybtam)! - Add `skills-manager-cli serve --stdio`, which runs the app's commands on a remote machine over a single `ssh` connection. Both sides must run the same version.
+
+- [#15](https://github.com/A-and-Brian/skills-manager/pull/15) [`90cff28`](https://github.com/A-and-Brian/skills-manager/commit/90cff28573017049603b1f5703454e385f6f74a9) Thanks [@ybtam](https://github.com/ybtam)! - Add a host switcher under the sidebar logo that moves the whole app between this computer and a remote host. The library, installs, presets, workspaces, projects and settings then act on that host, while backup, updates and window settings stay local. A banner shows which machine you're changing and offers Reconnect if the link drops.
+
+- [#16](https://github.com/A-and-Brian/skills-manager/pull/16) [`97a565c`](https://github.com/A-and-Brian/skills-manager/commit/97a565c4ca1e36a143dd45ae310fb1a12cfb2e4e) Thanks [@ybtam](https://github.com/ybtam)! - When a remote host is active, every path field opens a folder browser for that host instead of being disabled. The library's Open Folder becomes Copy Path.
+
+- [#17](https://github.com/A-and-Brian/skills-manager/pull/17) [`64d35bb`](https://github.com/A-and-Brian/skills-manager/commit/64d35bb1b92ac7568e7d2aea99aae86067d04031) Thanks [@ybtam](https://github.com/ybtam)! - Remove the separate remote host page now that the whole app can switch hosts. Check in Remote Hosts settings now runs the same handshake as connecting, so compatible means the exact same version.
+
+- [#18](https://github.com/A-and-Brian/skills-manager/pull/18) [`61f4570`](https://github.com/A-and-Brian/skills-manager/commit/61f457089aeca6a993af28c4846d9c72c02eeeb4) Thanks [@ybtam](https://github.com/ybtam)! - Drop the Simplified and Traditional Chinese interface, and point update checks, the in-app updater and GitHub links at this fork instead of upstream.
+
+### Patch Changes
+
+- [#24](https://github.com/A-and-Brian/skills-manager/pull/24) [`a8e0157`](https://github.com/A-and-Brian/skills-manager/commit/a8e01574f2cd5702e3b2e7cb77dbea7e98418d9b) Thanks [@ybtam](https://github.com/ybtam)! - Sign updates with this fork's own updater key. Builds from 1.41.0 onward only install updates published by this fork.
+
+- [#5](https://github.com/A-and-Brian/skills-manager/pull/5) [`943792b`](https://github.com/A-and-Brian/skills-manager/commit/943792b00eba4e6e0e2520422a2bf9279d0ee3b6) Thanks [@ybtam](https://github.com/ybtam)! - Split the Settings page into one component per section. No visible change.
+
+- [#11](https://github.com/A-and-Brian/skills-manager/pull/11) [`644a7ff`](https://github.com/A-and-Brian/skills-manager/commit/644a7ffea0acafa25b42d51d8a033c8555929ade) Thanks [@ybtam](https://github.com/ybtam)! - Move tool, sync, scan, preset and settings commands behind a host context so they can run outside the desktop app. No behaviour change.
+
+- [#12](https://github.com/A-and-Brian/skills-manager/pull/12) [`699b44b`](https://github.com/A-and-Brian/skills-manager/commit/699b44b5a881ce8e0bb3907fdfa4d85e3a52ab8d) Thanks [@ybtam](https://github.com/ybtam)! - Move skill and global workspace commands behind the host context, including install progress, cancellation and file-change events. No behaviour change.
+
+- [#13](https://github.com/A-and-Brian/skills-manager/pull/13) [`b7250f3`](https://github.com/A-and-Brian/skills-manager/commit/b7250f30f90923efb7c9c548b2a161bc7f59083a) Thanks [@ybtam](https://github.com/ybtam)! - Move project commands behind the host context and add a `list_directory` command for browsing a host's folders.
+
+- [#30](https://github.com/A-and-Brian/skills-manager/pull/30) [`7a5bc3e`](https://github.com/A-and-Brian/skills-manager/commit/7a5bc3ea0d78e99af11aba3104563e56d6d09ca1) Thanks [@ybtam](https://github.com/ybtam)! - Move in-app routing to TanStack Router so route paths and parameters are type-checked. Unknown addresses now open the dashboard instead of a blank window.
+
 ## [1.40.0] - 2026-09-17
 
 ### Release Overview
