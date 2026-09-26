@@ -19,16 +19,6 @@ fn refresh_tray_menu_best_effort(app: &tauri::AppHandle) {
     }
 }
 
-/// Sync a skill's files to all enabled tool adapter directories for the given preset.
-/// Only performs sync if the preset is the currently active one.
-pub(crate) fn sync_skill_to_active_preset(
-    store: &SkillStore,
-    scenario_id: &str,
-    skill_id: &str,
-) -> Result<(), AppError> {
-    scenario_service::sync_skill_to_active_scenario(store, scenario_id, skill_id)
-}
-
 #[derive(Debug, Serialize)]
 pub struct PresetDto {
     pub id: String,

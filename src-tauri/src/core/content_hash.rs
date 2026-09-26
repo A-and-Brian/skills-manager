@@ -4,7 +4,13 @@ use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-const IGNORED: &[&str] = &[".git", ".DS_Store", "Thumbs.db", ".gitignore", "__pycache__"];
+const IGNORED: &[&str] = &[
+    ".git",
+    ".DS_Store",
+    "Thumbs.db",
+    ".gitignore",
+    "__pycache__",
+];
 
 /// True for names excluded from a skill's content scope: the exact-match
 /// [`IGNORED`] entries plus compiled-Python artifacts (`*.pyc`). These are
@@ -35,7 +41,7 @@ pub struct ContentEntry {
 
 impl ContentEntry {
     pub fn is_executable(&self) -> bool {
-        self.exec_bits.map_or(false, |bits| bits != 0)
+        self.exec_bits.is_some_and(|bits| bits != 0)
     }
 }
 
@@ -137,7 +143,7 @@ pub fn hash_entries(entries: &[ContentEntry]) -> String {
         // Include executable bit so permission-only changes are detected.
         #[cfg(unix)]
         if let Some(bits) = entry.exec_bits {
-            hasher.update(&bits.to_le_bytes());
+            hasher.update(bits.to_le_bytes());
         }
     }
     hex::encode(hasher.finalize())

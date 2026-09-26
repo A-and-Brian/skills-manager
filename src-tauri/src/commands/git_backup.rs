@@ -1,14 +1,16 @@
 use crate::core::{
-    central_repo, error::AppError, git2_engine, git_backup, git_credentials, git_fetcher,
-    github_api, merge, skill_metadata, sync_metadata,
+    central_repo, error::AppError, git_backup, git_credentials, git_fetcher, github_api, merge,
+    sync_metadata,
 };
 use anyhow::Context;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::State;
-use walkdir::WalkDir;
 
+use crate::core::git_backup_store::{
+    apply_device_identity, effective_device_name, reconcile_skills_index_unlocked, sync_engine_pref,
+};
 use crate::core::skill_store::SkillStore;
 
 static FETCH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
@@ -18,49 +20,6 @@ static FETCH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 /// which validation rule failed), which is what the failure card must show.
 fn classify_git_chain(e: anyhow::Error) -> AppError {
     AppError::classify_git_error(format!("{e:#}"))
-}
-
-/// Push the persisted engine choice (`git_backup_engine` = "git2" | "system")
-/// and proxy setting into the core layer, which has no store access. Called
-/// at the entry of every command that can touch the network.
-pub(crate) fn sync_engine_pref(store: &SkillStore) {
-    let git2_enabled = store
-        .get_setting("git_backup_engine")
-        .ok()
-        .flatten()
-        .map(|v| v.trim() == "git2")
-        .unwrap_or(false);
-    git2_engine::set_preference(git2_enabled, store.proxy_url());
-}
-
-/// Resolve the device name (§4.3 设备命名): the persisted setting, or a
-/// hostname-derived default that is persisted on first use so it stays stable
-/// across sessions.
-fn effective_device_name(store: &SkillStore) -> String {
-    let saved = store
-        .get_setting("backup_device_name")
-        .ok()
-        .flatten()
-        .map(|v| git_backup::sanitize_device_name(&v))
-        .filter(|v| !v.is_empty());
-    if let Some(name) = saved {
-        return name;
-    }
-    let name = git_backup::default_device_name();
-    if let Err(e) = store.set_setting("backup_device_name", &name) {
-        log::warn!("device name: failed to persist default: {e:#}");
-    }
-    name
-}
-
-/// Best-effort: bring the repo's commit identity in line with the device name
-/// before an operation that can create commits. Identity trouble must never
-/// block a backup — commits then just carry the previous (or global) author.
-pub(crate) fn apply_device_identity(store: &SkillStore, skills_dir: &Path) {
-    let name = effective_device_name(store);
-    if let Err(e) = git_backup::configure_device_identity(skills_dir, &name) {
-        log::warn!("device name: failed to configure git identity: {e:#}");
-    }
 }
 
 /// RAII guard that clears `FETCH_IN_FLIGHT` on drop. Survives future
@@ -215,8 +174,7 @@ fn connect_with_token(
         .set_setting("github_auth_method", method)
         .map_err(AppError::db)?;
 
-    let remote_has_content =
-        git_backup::remote_has_heads(&info.url).map_err(classify_git_chain)?;
+    let remote_has_content = git_backup::remote_has_heads(&info.url).map_err(classify_git_chain)?;
 
     Ok(GithubBackupConnectResult {
         url: info.url,
@@ -288,8 +246,7 @@ pub async fn github_device_flow_poll(
 #[tauri::command]
 pub async fn git_backup_sanitize_remote_url(url: String) -> Result<String, AppError> {
     git_fetcher::validate_git_url(&url).map_err(AppError::git)?;
-    tokio::task::spawn_blocking(move || Ok(sanitize_url_to_keychain(url.trim())))
-        .await?
+    tokio::task::spawn_blocking(move || Ok(sanitize_url_to_keychain(url.trim()))).await?
 }
 
 #[tauri::command]
@@ -436,8 +393,10 @@ pub async fn git_backup_sync(
     sync_engine_pref(&store);
     let skills_dir = central_repo::skills_dir();
     tokio::task::spawn_blocking(move || {
-        git_backup::with_repo_lock("git sync", || run_sync_blocking(&store, &skills_dir, &message))
-            .map_err(classify_git_chain)
+        git_backup::with_repo_lock("git sync", || {
+            run_sync_blocking(&store, &skills_dir, &message)
+        })
+        .map_err(classify_git_chain)
     })
     .await?
 }
@@ -487,8 +446,7 @@ fn run_sync_blocking(
         }
 
         let status = git_backup::get_status(skills_dir)?;
-        let needs_push =
-            committed || status.ahead > 0 || status.upstream_health == "no_upstream";
+        let needs_push = committed || status.ahead > 0 || status.upstream_health == "no_upstream";
         if !needs_push {
             break;
         }
@@ -508,7 +466,10 @@ fn run_sync_blocking(
                 if !rejected || attempt + 1 == SYNC_PUSH_ATTEMPTS {
                     return Err(e);
                 }
-                log::info!("git sync: push rejected (attempt {}), refetching", attempt + 1);
+                log::info!(
+                    "git sync: push rejected (attempt {}), refetching",
+                    attempt + 1
+                );
                 git_backup::fetch_branch(skills_dir, &branch)?;
             }
         }
@@ -528,7 +489,12 @@ fn run_sync_blocking(
             ))
             .ok(),
     );
-    Ok(SyncOutcome { committed, merge: merge_summary, pushed, snapshot_tag })
+    Ok(SyncOutcome {
+        committed,
+        merge: merge_summary,
+        pushed,
+        snapshot_tag,
+    })
 }
 
 /// Pending "needs attention" conflicts (merge-engine design §4) for the
@@ -559,9 +525,8 @@ pub async fn git_backup_resolve_conflict(
     tokio::task::spawn_blocking(move || {
         git_backup::with_repo_lock("resolve conflict", || {
             apply_device_identity(&store, &skills_dir);
-            let safety_tag = merge::resolve::resolve_conflict_unlocked(
-                &store, &skills_dir, &skill_id, action,
-            )?;
+            let safety_tag =
+                merge::resolve::resolve_conflict_unlocked(&store, &skills_dir, &skill_id, action)?;
             reconcile_skills_index_unlocked(&store)?;
             store.log_audit(
                 crate::core::audit_log::AuditDraft::new("resolve_conflict")
@@ -803,51 +768,7 @@ fn migrate_embedded_credentials_unlocked(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    struct TestEnv {
-        _lock: std::sync::MutexGuard<'static, ()>,
-        _tmp: tempfile::TempDir,
-        store: SkillStore,
-        skills_dir: std::path::PathBuf,
-    }
-
-    impl Drop for TestEnv {
-        fn drop(&mut self) {
-            central_repo::set_test_base_dir_override(None);
-        }
-    }
-
-    /// Isolated base dir (askpass script, skills repo, DB) + mock keyring.
-    fn test_env() -> TestEnv {
-        git_credentials::use_mock_keyring();
-        let lock = central_repo::test_base_dir_lock();
-        let tmp = tempfile::tempdir().unwrap();
-        let base = tmp.path().join("base");
-        central_repo::set_test_base_dir_override(Some(base.clone()));
-        let skills_dir = central_repo::skills_dir();
-        std::fs::create_dir_all(&skills_dir).unwrap();
-        let store = SkillStore::new(&base.join("test.db")).unwrap();
-        TestEnv {
-            _lock: lock,
-            _tmp: tmp,
-            store,
-            skills_dir,
-        }
-    }
-
-    fn git(dir: &Path, args: &[&str]) {
-        let out = std::process::Command::new("git")
-            .arg("-C")
-            .arg(dir)
-            .args(args)
-            .output()
-            .unwrap();
-        assert!(
-            out.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
+    use crate::core::test_support::{git, test_env};
 
     fn origin_url(dir: &Path) -> String {
         let out = std::process::Command::new("git")
@@ -857,37 +778,6 @@ mod tests {
             .output()
             .unwrap();
         String::from_utf8_lossy(&out.stdout).trim().to_string()
-    }
-
-    #[test]
-    fn device_name_default_persists_and_rename_updates_repo_config() {
-        let env = test_env();
-        // First resolve derives a hostname default and persists it, so the
-        // name stays stable even if the hostname later changes.
-        let name = effective_device_name(&env.store);
-        assert!(!name.is_empty());
-        assert_eq!(
-            env.store.get_setting("backup_device_name").unwrap().as_deref(),
-            Some(name.as_str())
-        );
-
-        // With a repo present, a rename rewrites the repo-local identity used
-        // for all future commits (§4.3).
-        git(&env.skills_dir, &["init", "-b", "main"]);
-        env.store
-            .set_setting("backup_device_name", "Work Laptop")
-            .unwrap();
-        apply_device_identity(&env.store, &env.skills_dir);
-        let user_name = std::process::Command::new("git")
-            .arg("-C")
-            .arg(&env.skills_dir)
-            .args(["config", "--local", "--get", "user.name"])
-            .output()
-            .unwrap();
-        assert_eq!(
-            String::from_utf8_lossy(&user_name.stdout).trim(),
-            "Work Laptop"
-        );
     }
 
     #[test]
@@ -968,16 +858,23 @@ mod tests {
         git(&env.skills_dir, &["init", "-b", "main"]);
         git(
             &env.skills_dir,
-            &["remote", "add", "origin", "https://github.com/acme/repo.git"],
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/acme/repo.git",
+            ],
         );
         env.store
             .set_setting("git_backup_remote_url", "https://github.com/acme/repo.git")
             .unwrap();
 
-        let result =
-            migrate_embedded_credentials_unlocked(&env.store, &env.skills_dir).unwrap();
+        let result = migrate_embedded_credentials_unlocked(&env.store, &env.skills_dir).unwrap();
         assert_eq!(result, None);
-        assert_eq!(origin_url(&env.skills_dir), "https://github.com/acme/repo.git");
+        assert_eq!(
+            origin_url(&env.skills_dir),
+            "https://github.com/acme/repo.git"
+        );
     }
 
     #[test]
@@ -989,7 +886,12 @@ mod tests {
         git(&env.skills_dir, &["init", "-b", "main"]);
         git(
             &env.skills_dir,
-            &["remote", "add", "origin", "https://github.com/acme/repo.git"],
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/acme/repo.git",
+            ],
         );
         env.store
             .set_setting("git_backup_remote_url", "https://github.com/acme/repo.git")
@@ -998,7 +900,10 @@ mod tests {
         disconnect_local(&env.store, &env.skills_dir).unwrap();
         assert_eq!(origin_url(&env.skills_dir), "");
         assert_eq!(
-            env.store.get_setting("git_backup_remote_url").unwrap().as_deref(),
+            env.store
+                .get_setting("git_backup_remote_url")
+                .unwrap()
+                .as_deref(),
             Some("")
         );
 
@@ -1019,11 +924,13 @@ mod tests {
             )
             .unwrap();
 
-        let result =
-            migrate_embedded_credentials_unlocked(&env.store, &env.skills_dir).unwrap();
+        let result = migrate_embedded_credentials_unlocked(&env.store, &env.skills_dir).unwrap();
         assert_eq!(result.as_deref(), Some("https://github.com/acme/repo.git"));
         assert_eq!(
-            env.store.get_setting("git_backup_remote_url").unwrap().as_deref(),
+            env.store
+                .get_setting("git_backup_remote_url")
+                .unwrap()
+                .as_deref(),
             Some("https://github.com/acme/repo.git")
         );
     }
@@ -1053,83 +960,11 @@ mod tests {
         );
         assert_eq!(origin_url(&env.skills_dir), token_url);
         assert_eq!(
-            env.store.get_setting("git_backup_remote_url").unwrap().as_deref(),
+            env.store
+                .get_setting("git_backup_remote_url")
+                .unwrap()
+                .as_deref(),
             Some(token_url)
         );
     }
-}
-
-pub(crate) fn reconcile_skills_index_unlocked(store: &SkillStore) -> anyhow::Result<()> {
-    sync_metadata::cleanup_temporary_files()?;
-    if sync_metadata::has_complete_skill_snapshot() {
-        sync_metadata::reindex_from_metadata_unlocked(store)?;
-        return Ok(());
-    }
-
-    let skills_dir = central_repo::skills_dir();
-    std::fs::create_dir_all(&skills_dir)?;
-
-    // Remove stale DB records whose central directories no longer exist.
-    let existing = store.get_all_skills()?;
-    for skill in existing {
-        if !std::path::Path::new(&skill.central_path).exists() {
-            store.delete_skill(&skill.id)?;
-        }
-    }
-
-    // Add missing DB records for directories present in central repo.
-    for entry in WalkDir::new(&skills_dir)
-        .min_depth(1)
-        .max_depth(6)
-        .into_iter()
-        .filter_entry(|e| e.file_name().to_string_lossy() != ".git")
-        .flatten()
-    {
-        let path = entry.path().to_path_buf();
-        if !entry.file_type().is_dir() || !skill_metadata::is_valid_skill_dir(&path) {
-            continue;
-        }
-
-        let central_path = path.to_string_lossy().to_string();
-        if store.get_skill_by_central_path(&central_path)?.is_some() {
-            continue;
-        }
-
-        let meta = crate::core::skill_metadata::parse_skill_md(&path);
-        let inferred_name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown-skill".to_string());
-        let name = meta
-            .name
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or(inferred_name);
-        let now = chrono::Utc::now().timestamp_millis();
-
-        let record = crate::core::skill_store::SkillRecord {
-            id: uuid::Uuid::new_v4().to_string(),
-            name,
-            description: meta.description,
-            source_type: "import".to_string(),
-            source_ref: Some(central_path.clone()),
-            source_ref_resolved: None,
-            source_subpath: None,
-            source_branch: None,
-            source_revision: None,
-            remote_revision: None,
-            central_path,
-            content_hash: crate::core::content_hash::hash_directory(&path).ok(),
-            enabled: true,
-            created_at: now,
-            updated_at: now,
-            status: "ok".to_string(),
-            update_status: "local_only".to_string(),
-            last_checked_at: Some(now),
-            last_check_error: None,
-        };
-
-        store.insert_skill(&record)?;
-    }
-
-    sync_metadata::write_all_from_db_unlocked(store)
 }

@@ -163,26 +163,42 @@ fn handle_outcome<R: Runtime>(app: &AppHandle<R>, store: &SkillStore, outcome: O
             CONSECUTIVE_FAILURES.store(0, Ordering::Release);
             // Only worth telling the UI if a stale failure card should clear.
             if clear_error(store) {
-                emit(AutoBackupPayload { ok: true, pending: false, error: None });
+                emit(AutoBackupPayload {
+                    ok: true,
+                    pending: false,
+                    error: None,
+                });
             }
         }
         Outcome::BackedUp => {
             CONSECUTIVE_FAILURES.store(0, Ordering::Release);
             clear_error(store);
             log::info!("auto backup: committed/pushed");
-            emit(AutoBackupPayload { ok: true, pending: false, error: None });
+            emit(AutoBackupPayload {
+                ok: true,
+                pending: false,
+                error: None,
+            });
         }
         Outcome::RemoteAhead => {
             CONSECUTIVE_FAILURES.store(0, Ordering::Release);
             log::info!("auto backup: remote is ahead, waiting for the next round or manual sync");
-            emit(AutoBackupPayload { ok: false, pending: true, error: None });
+            emit(AutoBackupPayload {
+                ok: false,
+                pending: true,
+                error: None,
+            });
         }
         Outcome::PausedOnConflict => {
             CONSECUTIVE_FAILURES.store(0, Ordering::Release);
             log::info!(
                 "auto backup: remote touches a pending conflict — paused until it is resolved (§4)"
             );
-            emit(AutoBackupPayload { ok: false, pending: true, error: None });
+            emit(AutoBackupPayload {
+                ok: false,
+                pending: true,
+                error: None,
+            });
         }
         Outcome::Failed(msg) => {
             CONSECUTIVE_FAILURES.fetch_add(1, Ordering::AcqRel);
@@ -192,7 +208,11 @@ fn handle_outcome<R: Runtime>(app: &AppHandle<R>, store: &SkillStore, outcome: O
             }
             // Re-arm so the round retries after the (backed-off) quiet period.
             notify_central_change();
-            emit(AutoBackupPayload { ok: false, pending: false, error: Some(msg) });
+            emit(AutoBackupPayload {
+                ok: false,
+                pending: false,
+                error: Some(msg),
+            });
         }
     }
 }
@@ -208,7 +228,7 @@ pub(crate) fn run_round_blocking(store: &SkillStore) -> Outcome {
     if git_backup::raw_remote_url(&skills_dir).is_none() {
         return Outcome::Skipped("no remote");
     }
-    crate::commands::git_backup::sync_engine_pref(store);
+    crate::core::git_backup_store::sync_engine_pref(store);
 
     // Fail fast instead of queueing behind a user-initiated operation.
     let Ok(_lock) = RepoLock::acquire("auto backup") else {
@@ -234,7 +254,7 @@ pub(crate) fn run_round_blocking(store: &SkillStore) -> Outcome {
         return Outcome::Skipped("needs manual repair");
     }
 
-    crate::commands::git_backup::apply_device_identity(store, &skills_dir);
+    crate::core::git_backup_store::apply_device_identity(store, &skills_dir);
     if let Err(e) = sync_metadata::write_all_from_db_unlocked(store) {
         return Outcome::Failed(format!("{e:#}"));
     }
@@ -274,7 +294,8 @@ pub(crate) fn run_round_blocking(store: &SkillStore) -> Outcome {
         }
         match merge::gated_pull_unlocked(store, &skills_dir) {
             Ok(_summary) => {
-                if let Err(e) = crate::commands::git_backup::reconcile_skills_index_unlocked(store)
+                if let Err(e) =
+                    crate::core::git_backup_store::reconcile_skills_index_unlocked(store)
                 {
                     return Outcome::Failed(format!("{e:#}"));
                 }
@@ -330,7 +351,7 @@ pub fn commit_on_exit(store: &SkillStore) {
     if git_backup::ensure_no_interrupted_git_operation(&skills_dir).is_err() {
         return;
     }
-    crate::commands::git_backup::apply_device_identity(store, &skills_dir);
+    crate::core::git_backup_store::apply_device_identity(store, &skills_dir);
     if let Err(e) = sync_metadata::write_all_from_db_unlocked(store) {
         log::warn!("auto backup on exit: metadata write failed: {e:#}");
     }
@@ -508,10 +529,7 @@ mod tests {
             git_out(&env.remote, &["log", "-1", "--format=%s", "main"]),
             "from B"
         );
-        assert_eq!(
-            env.store.get_setting(SETTING_LAST_ERROR).unwrap(),
-            None
-        );
+        assert_eq!(env.store.get_setting(SETTING_LAST_ERROR).unwrap(), None);
     }
 
     #[test]

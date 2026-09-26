@@ -152,13 +152,19 @@ mod tests {
         assert!(resolved.ends_with("'sh' '--json' 'skills' 'list'"));
 
         let explicit = remote_command(&host(Some("/opt/sm/cli")), &["--version"]);
-        assert_eq!(explicit, r#"sh -c 'exec "$0" "$@"' '/opt/sm/cli' '--version'"#);
+        assert_eq!(
+            explicit,
+            r#"sh -c 'exec "$0" "$@"' '/opt/sm/cli' '--version'"#
+        );
     }
 
     #[test]
     fn arguments_are_single_quoted_for_the_remote_shell() {
         assert_eq!(shell_quote("it's"), r#"'it'\''s'"#);
-        let cmd = remote_command(&host(Some("cli")), &["skills", "install", "https://x/y.git; rm -rf ~"]);
+        let cmd = remote_command(
+            &host(Some("cli")),
+            &["skills", "install", "https://x/y.git; rm -rf ~"],
+        );
         assert!(cmd.ends_with("'https://x/y.git; rm -rf ~'"));
     }
 
@@ -189,15 +195,28 @@ mod tests {
 
     #[test]
     fn only_a_refused_serve_marks_an_older_cli() {
-        assert!(predates_serve(Some(2), "error: unrecognized subcommand 'serve'\n\nUsage: skills-manager-cli"));
-        assert!(!predates_serve(Some(2), "error: unexpected argument '--stdio' found"));
-        assert!(!predates_serve(Some(1), "error: unrecognized subcommand 'serve'"));
+        assert!(predates_serve(
+            Some(2),
+            "error: unrecognized subcommand 'serve'\n\nUsage: skills-manager-cli"
+        ));
+        assert!(!predates_serve(
+            Some(2),
+            "error: unexpected argument '--stdio' found"
+        ));
+        assert!(!predates_serve(
+            Some(1),
+            "error: unrecognized subcommand 'serve'"
+        ));
     }
 
     #[test]
     fn failures_are_classified_from_the_outside_in() {
         let h = host(None);
-        let ssh = classify_failure(&h, Some(255), "ssh: connect to host build port 22: Connection refused");
+        let ssh = classify_failure(
+            &h,
+            Some(255),
+            "ssh: connect to host build port 22: Connection refused",
+        );
         assert_eq!(ssh.kind, ErrorKind::Network);
         assert!(ssh.message.contains("Connection refused"));
 
@@ -209,8 +228,13 @@ mod tests {
         assert_eq!(windows.kind, ErrorKind::InvalidInput);
         assert!(windows.message.contains("not supported"));
 
-        assert_eq!(classify_failure(&h, Some(3), "CLI_NOT_FOUND").kind, ErrorKind::NotFound);
-        assert!(classify_failure(&h, Some(3), "BRIDGE_BROKEN").message.contains("republish"));
+        assert_eq!(
+            classify_failure(&h, Some(3), "CLI_NOT_FOUND").kind,
+            ErrorKind::NotFound
+        );
+        assert!(classify_failure(&h, Some(3), "BRIDGE_BROKEN")
+            .message
+            .contains("republish"));
 
         let opaque = classify_failure(&h, Some(1), "segfault");
         assert_eq!(opaque.kind, ErrorKind::Internal);

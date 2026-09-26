@@ -206,8 +206,16 @@ fn collect_tray_menu_data(store: &core::skill_store::SkillStore) -> TrayMenuData
 }
 
 fn format_status_line(data: &TrayMenuData) -> String {
-    let skill_label = if data.total_skills == 1 { "skill" } else { "skills" };
-    let agent_label = if data.coding_agent_count == 1 { "agent" } else { "agents" };
+    let skill_label = if data.total_skills == 1 {
+        "skill"
+    } else {
+        "skills"
+    };
+    let agent_label = if data.coding_agent_count == 1 {
+        "agent"
+    } else {
+        "agents"
+    };
     format!(
         "{} {} · {} {} connected",
         data.total_skills, skill_label, data.coding_agent_count, agent_label
@@ -241,7 +249,11 @@ fn preset_menu_item_id(preset: &TrayPresetEntry) -> (String, &'static str) {
 }
 
 fn preset_menu_label(preset: &TrayPresetEntry) -> String {
-    let unit = if preset.skill_count == 1 { "skill" } else { "skills" };
+    let unit = if preset.skill_count == 1 {
+        "skill"
+    } else {
+        "skills"
+    };
     match preset.status() {
         TrayPresetStatus::Active => format!("✓ {} ({} {unit})", preset.name, preset.skill_count),
         TrayPresetStatus::Partial => format!(
@@ -559,7 +571,7 @@ fn check_updates_from_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
                 std::thread::sleep(std::time::Duration::from_millis(200));
                 // Resolve off the lock, then take it only for the status
                 // write — the lock must never span a network round-trip (#315).
-                let prefetched = commands::skills::prefetch_skill_remote(
+                let prefetched = core::skill_update_check::prefetch_skill_remote(
                     &store_for_task,
                     &skill_id,
                     true,
@@ -569,11 +581,13 @@ fn check_updates_from_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
                 {
                     Ok(lock) => lock,
                     Err(err) => {
-                        log::warn!("Tray update check: failed to acquire repo lock for {skill_id}: {err}");
+                        log::warn!(
+                            "Tray update check: failed to acquire repo lock for {skill_id}: {err}"
+                        );
                         continue;
                     }
                 };
-                if let Err(err) = commands::skills::check_skill_update_internal_with_remote(
+                if let Err(err) = core::skill_update_check::check_skill_update_internal_with_remote(
                     &store_for_task,
                     &skill_id,
                     true,
@@ -632,7 +646,8 @@ fn open_skills_folder_from_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 
         let status = cmd.arg(&repo_path).status();
         match status {
-            Ok(_status) => {
+            Ok(_status) =>
+            {
                 #[cfg(not(target_os = "windows"))]
                 if !_status.success() {
                     log::warn!(

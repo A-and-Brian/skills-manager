@@ -58,9 +58,10 @@ jobs:
 
   # Linux is otherwise only compiled by the release workflow (tag push), so a
   # Linux-only compile break — e.g. the keyring secret-service backend with
-  # its vendored libdbus build — would surface at release time. A cargo check
+  # its vendored libdbus build — would surface at release time. A clippy run
   # here catches it on every push instead. Tests still run on macOS/Windows
-  # above; this job only needs to prove the Linux target compiles.
+  # above; this job only needs to prove the Linux target compiles. It also
+  # runs the formatting gate, which is the same on every platform.
   linux-check:
     runs-on: ubuntu-22.04
     name: Rust check (Linux)
@@ -71,6 +72,12 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          components: rustfmt, clippy
+
+      # Runs before the slow system-dependency install so formatting fails fast.
+      - name: Check formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
@@ -86,5 +93,7 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Check
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+      # Clippy compiles everything cargo check does, so it replaces that step.
+      # --all-targets also lints tests and the CLI binary.
+      - name: Clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings

@@ -24,7 +24,7 @@ pub async fn fetch_leaderboard(
     }
 
     let proxy_url = store.proxy_url();
-    let board_type = LeaderboardType::from_str(&board);
+    let board_type = LeaderboardType::parse(&board);
     let skills = tauri::async_runtime::spawn_blocking(move || {
         skillssh_api::fetch_leaderboard(board_type, proxy_url.as_deref()).map_err(AppError::network)
     })
@@ -53,4 +53,3 @@ pub async fn search_skillssh(
     })
     .await?
 }
-

@@ -606,7 +606,7 @@ pub fn relative_link_target(link: &Path, target: &Path, root: &Path) -> Result<P
     {
         anyhow::bail!("Cannot link {:?} to {:?}", link, target);
     }
-    let mut relative: PathBuf = std::iter::repeat("..").take(link_parts.len() - 1).collect();
+    let mut relative: PathBuf = std::iter::repeat_n("..", link_parts.len() - 1).collect();
     relative.extend(target_parts);
     Ok(relative)
 }
@@ -1079,8 +1079,7 @@ mod tests {
         fs::write(elsewhere.join("mine.md"), "user content").unwrap();
         std::os::unix::fs::symlink(&elsewhere, &tgt).unwrap();
 
-        let err =
-            sync_skill(&src, &tgt, SyncMode::Symlink, ReplacePolicy::NoClobber).unwrap_err();
+        let err = sync_skill(&src, &tgt, SyncMode::Symlink, ReplacePolicy::NoClobber).unwrap_err();
         assert!(err.to_string().contains("Refusing to replace"), "{err}");
         assert_eq!(fs::read_link(&tgt).unwrap(), elsewhere);
         assert!(elsewhere.join("mine.md").exists());
@@ -1100,8 +1099,7 @@ mod tests {
         fs::write(src.join("SKILL.md"), "# hello").unwrap();
         std::os::unix::fs::symlink(&gone, &tgt).unwrap();
 
-        let err =
-            sync_skill(&src, &tgt, SyncMode::Symlink, ReplacePolicy::NoClobber).unwrap_err();
+        let err = sync_skill(&src, &tgt, SyncMode::Symlink, ReplacePolicy::NoClobber).unwrap_err();
         assert!(err.to_string().contains("Refusing to replace"), "{err}");
 
         sync_skill(
@@ -1248,8 +1246,8 @@ mod tests {
         fs::write(real.join("SKILL.md"), "# hello").unwrap();
         std::os::unix::fs::symlink(&real, &link).unwrap();
 
-        let err = sync_skill(&link, &link, SyncMode::Copy, ReplacePolicy::UserConfirmed)
-            .unwrap_err();
+        let err =
+            sync_skill(&link, &link, SyncMode::Copy, ReplacePolicy::UserConfirmed).unwrap_err();
         assert!(err.to_string().contains("same path"), "{err}");
         // The link and everything behind it must survive.
         assert!(link.is_symlink());
@@ -1261,8 +1259,13 @@ mod tests {
         // the plain `src == dst` guard and never reach the lexical comparison.
         let aliased = tmp.path().join("real").join("..").join("link");
         assert_ne!(aliased, link, "alias must not be trivially equal");
-        let err = sync_skill(&aliased, &link, SyncMode::Copy, ReplacePolicy::UserConfirmed)
-            .unwrap_err();
+        let err = sync_skill(
+            &aliased,
+            &link,
+            SyncMode::Copy,
+            ReplacePolicy::UserConfirmed,
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("same path"), "{err}");
         assert!(link.is_symlink());
         assert!(real.join("SKILL.md").exists());

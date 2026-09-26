@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 /// Registry of per-operation cancel tokens.
 /// Each install operation gets a unique key; setting the flag cancels it.
+#[derive(Default)]
 pub struct InstallCancelRegistry {
     tokens: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
