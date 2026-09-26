@@ -795,6 +795,7 @@ export function ProjectDetail() {
               </button>
               <button
                 onClick={() => setViewMode("grid")}
+                data-testid="view-grid"
                 className={cn(
                   "rounded-md p-2 transition-colors outline-none",
                   viewMode === "grid" ? "bg-surface-active text-secondary" : "text-muted hover:text-tertiary"
@@ -804,6 +805,7 @@ export function ProjectDetail() {
               </button>
               <button
                 onClick={() => setViewMode("list")}
+                data-testid="view-list"
                 className={cn(
                   "rounded-md p-2 transition-colors outline-none",
                   viewMode === "list" ? "bg-surface-active text-secondary" : "text-muted hover:text-tertiary"
